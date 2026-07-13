@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrator CLI"
+  short_description: "Coordinate GitHub issue work across coding CLIs"
+  default_prompt: "Use $orchestrator-cli to plan, dispatch, and track a GitHub Issues workflow across Claude, Codex, and Antigravity."
