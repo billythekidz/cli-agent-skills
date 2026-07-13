@@ -3,7 +3,10 @@
 Replace angle-bracket fields. Keep issue bodies short enough that a worker can
 act without reading unrelated discussion.
 
-## Parent Plan Issue
+## Parent Plan Record
+
+Use this as a parent Issue body in GitHub mode or as the plan section of
+`.orchestrator/INDEX.md` in local Markdown mode.
 
 ```markdown
 ## Outcome
@@ -21,17 +24,18 @@ act without reading unrelated discussion.
 - Integration owner: <CLI and model tier>
 - Parent branch/worktree: <location>
 - Child tasks:
-  - [ ] #<number> <title>
-  - [ ] #<number> <title>
+  - [ ] #<number> | TASK-<number> <title>
+  - [ ] #<number> | TASK-<number> <title>
 
 ## Decisions and risks
 <confirmed assumptions, dependency order, and escalation points>
 ```
 
-## Child Task Issue
+## Child Task Record
 
 ```markdown
-Parent: #<parent-number>
+Parent: #<parent-number> | `.orchestrator/INDEX.md`
+Control plane: `github` | `local-markdown`
 
 ## Objective
 <one observable outcome>
@@ -46,7 +50,7 @@ Parent: #<parent-number>
 - Dispatch ID: `issue-<number>-attempt-<n>`
 - Worktree / branch: <absolute path and branch>
 - May change: <exclusive paths>
-- Must not change: <excluded paths and GitHub metadata>
+- Must not change: <excluded paths and control-plane state>
 
 ## Acceptance checks
 - <verification command>
@@ -54,41 +58,46 @@ Parent: #<parent-number>
 
 ## Required handoff
 Return changed files, branch/commit, verification output, blockers, and a
-proposed issue comment. Do not update GitHub Issues directly.
+proposed handoff record. Do not update the control plane directly.
 ```
 
 ## Parent Dispatch Ledger
 
-Post this as a parent-issue comment before launching a batch. Update it only
-after a reviewed handoff; child comments remain the detailed event history.
+Post this as a parent-issue comment in GitHub mode or keep it in `INDEX.md` in
+local Markdown mode. Update it only after a reviewed handoff; child handoffs
+remain the detailed event history.
 
 ```markdown
-| Issue | Dispatch | Mode | CLI / tier | Owns | Depends on | State |
+| Record | Dispatch | Mode | CLI / tier | Owns | Depends on | State |
 | --- | --- | --- | --- | --- | --- | --- |
-| #121 | `issue-121-attempt-1` | `assign` | claude-cli / balanced | read-only | none | dispatched |
-| #122 | `issue-122-attempt-1` | `assign` | codex-cli / balanced | `tests/webhook-retry.*` | none | dispatched |
-| #124 | not dispatched | `handoff` | codex-cli / high | `src/webhooks/*` | #121, #122 | blocked |
+| #121 / TASK-001 | `issue-121-attempt-1` | `assign` | claude-cli / balanced | read-only | none | dispatched |
+| #122 / TASK-002 | `issue-122-attempt-1` | `assign` | codex-cli / balanced | `tests/webhook-retry.*` | none | dispatched |
+| #124 / TASK-004 | not dispatched | `handoff` | codex-cli / high | `src/webhooks/*` | #121, #122 | blocked |
 ```
 
 ## Worker Prompt
 
 ```text
-GitHub issue: #<number> <URL>
-Dispatch ID: issue-<number>-attempt-<n>
+Task record: #<number> <URL> | `.orchestrator/tasks/TASK-<number>.md`
+Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
 Workspace: <absolute dedicated worktree>
 Objective: <one outcome>
 Own: <paths>
-Do not change: <paths, GitHub state, deployment state>
+Do not change: <paths, control-plane state, deployment state>
 Inputs: <dependency evidence>
 Verify: <exact command>
 
 Inspect before editing. Make the smallest in-scope change. Do not use GitHub
-CLI or modify issue metadata. Return: summary; changed files; branch/commit;
-verification output; blockers; and a concise proposed handoff comment.
+CLI or modify task/index/handoff records. Return: summary; changed files;
+branch/commit; verification output; blockers; and a concise proposed handoff
+record.
 ```
 
-## Handoff Comment
+## Handoff Record
+
+Post this as an Issue comment in GitHub mode or save it as
+`.orchestrator/handoffs/TASK-<number>-attempt-<n>.md` in local Markdown mode.
 
 ```markdown
 ## Handoff
@@ -103,7 +112,7 @@ Blocker: <none or concrete blocker>
 Next owner: <CLI/model tier and one next action>
 ```
 
-## Bug Report
+## Bug Record
 
 ```markdown
 ## Summary
@@ -127,10 +136,28 @@ Next owner: <CLI/model tier and one next action>
 - Suggested CLI/model tier: <route and why>
 ```
 
+## Local Markdown Layout
+
+When GitHub is unavailable, initialize this tracked layout before parallel
+dispatch. The supervisor owns `INDEX.md`; each worker only owns its assigned
+task/handoff files.
+
+```text
+.orchestrator/
+  INDEX.md
+  tasks/TASK-001.md
+  handoffs/TASK-001-attempt-1.md
+  bugs/BUG-001.md
+```
+
+Use [file-fallback.md](file-fallback.md) for the full templates and the
+authorized reconciliation procedure after GitHub recovers.
+
 ## Concrete Parallel-Then-Sequential Case
 
-**Goal:** Prevent duplicate webhook processing after a retry. Create parent
-issue `#120` only after authorization, then use these child issues:
+**Goal:** Prevent duplicate webhook processing after a retry. In GitHub mode,
+create parent issue `#120` only after authorization, then use these child
+issues:
 
 | Issue | Scope | Route | Dependency |
 | --- | --- | --- | --- |
@@ -154,6 +181,11 @@ issue `#120` only after authorization, then use these child issues:
 
 If any parallel worker exits without its dispatch ID and required handoff
 fields, mark it `no-handoff`, preserve its output, and do not unlock `#124`.
+
+In local Markdown mode, replace parent `#120` with `INDEX.md` and child issues
+`#121` through `#125` with `TASK-001` through `TASK-005`. Save their handoffs
+under `.orchestrator/handoffs/`; do not create GitHub issues until a user
+authorizes reconciliation.
 
 Example blocker handoff for `#124`:
 

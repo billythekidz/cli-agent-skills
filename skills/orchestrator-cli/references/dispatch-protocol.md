@@ -2,8 +2,9 @@
 
 This protocol adapts the implemented `assign`, `handoff`, and `send_message`
 contracts in [CLI Agent Orchestrator](https://github.com/awslabs/cli-agent-orchestrator)
-to direct local CLIs and GitHub Issues. It does not start CAO and does not
-depend on CAO terminal IDs or an inbox service.
+to direct local CLIs with GitHub Issues or `.orchestrator/` Markdown records.
+It does not start CAO and does not depend on CAO terminal IDs or an inbox
+service.
 
 CAO's source uses non-blocking `assign` with a callback, blocking `handoff`
 with structured output, caller-aware delivery, fail-fast preflight, and clear
@@ -25,7 +26,7 @@ required input. Do not run a `handoff` in a worktree another writer owns.
 
 Before any write worker starts, verify all of the following:
 
-1. The repository, parent issue, and child issue are exact and authorized.
+1. The repository, parent record, and child record are exact and authorized.
 2. The child has an objective, inputs, exclusive allowed paths, excluded paths,
    verification, CLI, and model tier.
 3. Every named dependency is complete or its output is explicitly available.
@@ -36,8 +37,9 @@ Before any write worker starts, verify all of the following:
 6. The result location, timeout policy, and supervisor callback target are
    known before launch.
 
-Write a dispatch comment before launching a child. It is the durable equivalent
-of a CAO terminal record:
+Write a dispatch record before launching a child. It is the durable equivalent
+of a CAO terminal record: use an issue comment in GitHub mode, or the task file
+plus an `INDEX.md` event in local Markdown mode.
 
 ```markdown
 <!-- orchestrator-cli:dispatch:issue-124-attempt-1 -->
@@ -53,15 +55,15 @@ Timeout: `<duration or policy>`
 State: `dispatched`
 ```
 
-The supervisor, not the worker, owns this comment. A worker's return must name
-the same dispatch ID; otherwise treat it as misrouted and do not attach it to
-the issue.
+The supervisor, not the worker, owns the issue comment or `INDEX.md` event. A
+worker's return must name the same dispatch ID; otherwise treat it as misrouted
+and do not attach it to the task record.
 
 ## Parallel Fan-Out
 
 Run a batch only when all child issues are ready and every writer has a unique
 worktree and non-overlapping `Owns` paths. Start the batch, retain each process
-handle and raw output, then post one handoff comment per child after review.
+handle and raw output, then write one handoff record per child after review.
 
 Do not use an unbounded fan-out. Limit the batch to the number of independent
 tasks that can be reviewed and integrated without losing track of their output.
@@ -86,20 +88,21 @@ commit, verification command and result, evidence, blockers, and next owner.
 | `misrouted-handoff` | Record the received ID, keep it out of the target issue, and locate or re-request the correct handoff. |
 
 Never replace a failed attempt's evidence. A retry gets a new attempt number
-and a comment explaining what changed: input, scope, CLI/model tier, timeout,
-or environmental repair. Do not launch a second process for an active dispatch
-unless the user explicitly instructs a takeover and the original worker is
-stopped or isolated.
+and a durable record explaining what changed: input, scope, CLI/model tier,
+timeout, or environmental repair. Do not launch a second process for an active
+dispatch unless the user explicitly instructs a takeover and the original
+worker is stopped or isolated.
 
 ## Sequential Integration Gate
 
 At a dependency gate, the integration owner must:
 
-1. Read the exact child issue handoffs and their evidence.
+1. Read the exact child issue or local task handoffs and their evidence.
 2. Confirm required inputs are merged or available in its worktree.
 3. Resolve conflicts without starting another writing worker in that worktree.
 4. Run the parent acceptance checks.
 5. Post one parent summary listing each child dispatch ID and final outcome.
 
 This retains CAO's separation between asynchronous work and the blocking
-handoff that synthesizes it, while GitHub Issues provide the durable history.
+handoff that synthesizes it, while the selected control plane provides durable
+history.

@@ -1,21 +1,24 @@
 ---
 name: orchestrator-cli
-description: "Coordinate parallel and sequential engineering work directly through GitHub Issues and local Claude Code, Codex, and Antigravity CLIs. Use when an agent needs to create a plan, split and route tasks, track handoffs, report bugs, recover blocked work, or synthesize results with `gh` first and a GitHub API fallback."
+description: "Coordinate parallel and sequential engineering work directly through GitHub Issues when available, or durable local Markdown records when GitHub is offline or failing, with local Claude Code, Codex, and Antigravity CLIs. Use when an agent needs to create a plan, split and route tasks, track handoffs, report bugs, recover blocked work, or synthesize results."
 ---
 
-# GitHub CLI Task Orchestration
+# Direct CLI Task Orchestration
 
-Use GitHub Issues as the source of truth for a multi-agent task. Delegate
-bounded work directly through `claude`, `codex exec`, and `agy`; do not start
-`cao-server`, call CAO, or use CAO handoff tools.
+Use GitHub Issues as the control plane when `gh` can read the target repository.
+When GitHub is unavailable, use `.orchestrator/` Markdown records in the target
+repository instead. Delegate bounded work directly through `claude`,
+`codex exec`, and `agy`; do not start `cao-server`, call CAO, or use CAO
+handoff tools.
 
 ## Operating Boundaries
 
-- Separate read actions from external writes. Inspect issues, labels, and code
-  first. Create, edit, comment on, label, assign, or close an issue only when
-  the user explicitly requests that workflow or has already authorized it.
-- Keep each write scoped to the named repository and issue numbers. Do not
-  change unrelated issues, labels, projects, branches, or pull requests.
+- Choose exactly one control plane for an active run: GitHub Issues/API or
+  `.orchestrator/` Markdown. Do not write both until an authorized reconcile.
+- Separate read actions from external writes. Create, edit, comment on, label,
+  assign, or close GitHub issues only when the user authorizes that workflow.
+- Keep GitHub writes scoped to the named repository and issue numbers. Keep
+  local writes scoped to the active repository's `.orchestrator/` directory.
 - Give every writing worker a unique worktree, branch, and file ownership
   boundary. Run work in parallel only when both dependencies and write scopes
   are independent.
@@ -30,141 +33,183 @@ bounded work directly through `claude`, `codex exec`, and `agy`; do not start
 Adapt CAO's implemented `assign`, `handoff`, and `send_message` contracts
 without starting `cao-server` or relying on CAO terminal IDs.
 
-| CAO primitive | Direct CLI and GitHub Issue equivalent |
+| CAO primitive | Direct CLI equivalent |
 | --- | --- |
 | `assign` | Launch an independent child task asynchronously in its own worktree. Record a unique dispatch ID before launch and require a structured handoff result. |
 | `handoff` | Run a blocking gate and wait for its structured result before unlocking a dependent task. |
-| `send_message` | The supervisor posts the reviewed child result as a durable comment on the exact task issue and links it to the parent. |
+| `send_message` | The supervisor writes the reviewed child result to an exact GitHub issue comment or local handoff file, then links it to the parent record. |
 
-Use `issue-<number>-attempt-<n>` as the dispatch ID. It replaces CAO's worker
-terminal ID and prevents results from being attached to the wrong task.
-
-Before an `assign`, fail fast if the issue, parent, dependency inputs,
-worktree, result location, or callback target is missing. Do not report a task
-as successful merely because its child process launched or exited. A result
-without the required handoff fields is `no-handoff`, not success.
+Use `issue-<number>-attempt-<n>` in GitHub mode and
+`task-TASK-<number>-attempt-<n>` in local Markdown mode. A result without the
+matching dispatch ID and required handoff fields is `no-handoff`, not success.
 
 CAO's workflow service currently reserves rather than implements its own
-`parallel` mode. This skill therefore implements parallelism explicitly with a
-GitHub Issue dependency graph, separate worktrees, durable dispatch comments,
-and a single integration gate. See
+`parallel` mode. Implement parallelism explicitly with a dependency graph,
+separate worktrees, durable task records, and a single integration gate. See
 [references/dispatch-protocol.md](references/dispatch-protocol.md).
 
-## Bootstrap
+## Select The Control Plane
 
-Run this in the target repository before planning or dispatching. If GitHub
-authentication is absent, start the OAuth browser flow yourself and wait for
-the user to finish it before continuing.
+If the user says the work must stay offline, enter local Markdown mode without
+attempting GitHub. Otherwise, probe `gh` first. When `gh` lacks authentication,
+start the OAuth browser flow. If `gh` cannot complete the probe, try direct
+REST only when `GH_TOKEN` or `GITHUB_TOKEN` is already configured; otherwise
+immediately use the local fallback.
 
 ```powershell
-Get-Command gh -ErrorAction Stop
-gh auth status
-if ($LASTEXITCODE -ne 0) {
-  gh auth login --web --git-protocol https
-  if ($LASTEXITCODE -ne 0) { throw "GitHub OAuth login did not complete." }
+$mode = "local-markdown"
+$repo = $null
+$githubFailure = "GitHub was not probed."
+$apiToken = if ($env:GH_TOKEN) { $env:GH_TOKEN } else { $env:GITHUB_TOKEN }
+$gh = Get-Command gh -ErrorAction SilentlyContinue
+
+if ($null -ne $gh) {
   gh auth status
+  if ($LASTEXITCODE -ne 0) {
+    gh auth login --web --git-protocol https
+    gh auth status
+  }
+
+  if ($LASTEXITCODE -eq 0) {
+    $repo = gh repo view --json nameWithOwner -q .nameWithOwner 2>$null
+    if ($LASTEXITCODE -eq 0) {
+      $probe = gh issue list --repo $repo --state open --limit 1 --json number 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        $mode = "github"
+      } else {
+        $githubFailure = ($probe | Out-String).Trim()
+      }
+    } else {
+      $githubFailure = "The target repository could not be resolved through gh."
+    }
+  } else {
+    $githubFailure = "GitHub OAuth login did not complete."
+  }
+} else {
+  $githubFailure = "gh is not installed."
 }
 
-$repo = gh repo view --json nameWithOwner -q .nameWithOwner
-if ($LASTEXITCODE -ne 0) { throw "Run inside the intended GitHub repository." }
+# Direct REST is a last GitHub route. Never print or persist the token.
+if ($mode -eq "local-markdown" -and $apiToken) {
+  $origin = git remote get-url origin 2>$null
+  if ($origin -match 'github\.com[/:]([^/]+/[^/]+?)(?:\.git)?$') {
+    $apiRepo = $matches[1] -replace '\.git$', ''
+    try {
+      $headers = @{ Authorization = "Bearer $apiToken"; Accept = "application/vnd.github+json" }
+      Invoke-RestMethod -Uri "https://api.github.com/repos/$apiRepo/issues?state=open&per_page=1" -Headers $headers -ErrorAction Stop | Out-Null
+      $repo = $apiRepo
+      $mode = "github-api"
+    } catch {
+      $githubFailure = "GitHub REST probe failed: $($_.Exception.Message)"
+    }
+  }
+}
+
+if ($mode -eq "local-markdown") {
+  $orchestratorRoot = Join-Path (Get-Location) ".orchestrator"
+  @($orchestratorRoot, "$orchestratorRoot\tasks", "$orchestratorRoot\handoffs", "$orchestratorRoot\bugs") |
+    ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
+  Write-Host "Using local Markdown orchestration: $githubFailure"
+}
 ```
 
-If `gh` is unavailable, do not ask the user to paste a token. Install GitHub
-CLI and use the OAuth flow above. Use direct GitHub REST or GraphQL only when a
-token is already provided through `GH_TOKEN` or `GITHUB_TOKEN`.
+Use `gh api` only when `$mode` is `github` but a high-level `gh` command lacks
+the operation. Use direct REST only when `$mode` is `github-api`. If either API
+route fails, record the failure and switch to local Markdown mode; do not keep
+retrying external writes.
+
+Read [references/github-issue-operations.md](references/github-issue-operations.md)
+only in `github` or `github-api` mode. Read
+[references/file-fallback.md](references/file-fallback.md) before creating or
+changing local task records.
 
 ## Orchestration Workflow
 
-1. **Preflight**: Confirm authentication, repository, parent issue, current
-   issue state, dependency inputs, and a unique worktree for every writer.
-   Reject dependency cycles, overlapping writers, and an already-active
-   dispatch ID before launching any child.
-2. **Discover**: Read the repository, open issues, target issue comments, and
-   existing labels. Reuse the repository's taxonomy instead of inventing one.
-3. **Plan**: Create one parent issue only when authorized. State the outcome,
-   acceptance checks, dependencies, file ownership, and a checklist linking
-   each child task. Add a dispatch ledger comment so task IDs, modes, attempts,
-   owners, and gates are durable.
-4. **Split**: Make each child issue independently actionable. Record its
-   parent, inputs, blocked-by issues, output, verification, owner CLI, model
-   tier, and exclusive file scope. Use `Depends on #123` and `Unblocks #456`
-   in the issue body when native hierarchy is unavailable.
+1. **Preflight**: Confirm the control plane, parent record, current task state,
+   dependency inputs, and a unique worktree for every writer. Reject dependency
+   cycles, overlapping writers, and an already-active dispatch ID.
+2. **Discover**: In GitHub mode, read issues, comments, and labels. In local
+   mode, read `.orchestrator/INDEX.md`, the target task files, handoffs, and
+   bugs. Reuse the active control plane's taxonomy and IDs.
+3. **Plan**: Create one parent GitHub issue or initialize the local index only
+   when authorized. State the outcome, acceptance checks, dependencies, file
+   ownership, and a linked child-task ledger.
+4. **Split**: Make each child issue or `TASK-<number>.md` independently
+   actionable. Record its parent, inputs, blocked-by tasks, output,
+   verification, owner CLI, model tier, and exclusive file scope.
 5. **Route**: Select a CLI and model tier from
    [references/cli-model-routing.md](references/cli-model-routing.md). Route
    hard design decisions to a strong reasoning tier; route mechanical,
    evidence-only work to a faster tier.
 6. **Dispatch**: Mark independent tasks as `assign` and launch them in parallel
-   only after their preflight checks pass. Mark dependency gates as `handoff`;
-   wait for their structured results before the next task. Give every worker
-   the issue URL/number, dispatch ID, absolute worktree, allowed paths,
-   prohibited paths, verification command, and required handoff fields. Use
-   the matching direct CLI skill; workers should not update GitHub metadata
-   unless that is explicitly part of their task.
-7. **Track**: Post a concise handoff comment after reviewing the worker result.
-   Mark blockers with evidence and the next decision needed. Start dependent
-   tasks only after their inputs are merged or otherwise made available.
+   only after preflight passes. Mark dependency gates as `handoff`; wait for
+   their structured results before the next task. Give every worker the task
+   record, dispatch ID, absolute worktree, allowed paths, prohibited paths,
+   verification command, and required handoff fields.
+7. **Track**: The supervisor reviews every worker result, then posts the
+   handoff comment in GitHub mode or writes the matching handoff Markdown file
+   in local mode. Mark blockers with evidence and the next decision needed.
 8. **Integrate**: Reserve one sequential owner for conflict resolution, final
-   verification, and the parent-issue summary. Do not let multiple workers edit
-   the integration worktree.
-9. **Close**: Close only the exact child issue whose acceptance checks are met.
-   Close the parent only after every required child is complete and the final
-   verification is recorded.
+   verification, and the parent-record summary. Do not let multiple workers
+   edit the integration worktree.
+9. **Close**: Close only the exact GitHub child issue or mark only the exact
+   local task as done when its acceptance checks are recorded. Do not reconcile
+   the two control planes without explicit authorization.
 
-Read [references/github-issue-operations.md](references/github-issue-operations.md)
-before issuing GitHub writes or using the API fallback. Read
-[references/dispatch-protocol.md](references/dispatch-protocol.md) before
+Read [references/dispatch-protocol.md](references/dispatch-protocol.md) before
 launching a parallel worker or retrying one. Read
 [references/templates-and-example.md](references/templates-and-example.md) for
-copy-ready issue, handoff, bug-report, and worker-prompt templates plus a
-parallel-then-sequential example.
+copy-ready issue, local-record, handoff, bug-report, and worker-prompt
+templates plus a parallel-then-sequential example.
 
 ## Dispatch Contract
 
 Use this minimum prompt shape with every child agent:
 
 ```text
-GitHub issue: <URL or #number>
-Dispatch ID: issue-<number>-attempt-<n>
+Task record: <GitHub URL/#number or .orchestrator/tasks/TASK-<number>.md>
+Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
 Workspace: <absolute, dedicated worktree>
 Objective: <one observable outcome>
 Own: <allowed paths>
 Do not change: <paths and external state>
-Inputs: <dependency issues, commits, or documents>
+Inputs: <dependency records, commits, or documents>
 Verify: <exact commands or checks>
 Return: summary, changed files, branch/commit, verification evidence,
-blockers, and a proposed GitHub handoff comment. Do not edit GitHub Issues.
+blockers, and a proposed handoff record. Do not change the control plane.
 ```
 
 For direct execution, follow the corresponding `claude-cli`, `codex-cli`, or
 `antigravity-cli` skill. Their default unattended flags are intentionally
-dangerous; keep the task one issue wide and inspect the result before the next
-GitHub update.
+dangerous; keep the task one record wide and inspect the result before the next
+control-plane update.
 
 For `assign`, capture the process handle and raw output in a temporary result
 location owned by the supervisor. The handoff becomes durable only after the
-supervisor verifies it and posts the structured comment. For `handoff`, wait
-for the required fields before dispatching the dependent task.
+supervisor verifies it and writes the GitHub comment or local handoff file. For
+`handoff`, wait for the required fields before dispatching the dependent task.
 
 ## Status And Recovery
 
-- Prefer existing status labels. With explicit approval, a small compatible
+- Treat GitHub comments or local Markdown records as an append-only execution
+  journal. The normal transition is `planned -> ready -> dispatched -> running
+  -> handoff -> verified -> done`; a failure goes to `blocked` with a reason.
+- In GitHub mode, prefer existing labels. With explicit approval, a compatible
   taxonomy is `orchestrator:ready`, `orchestrator:active`,
   `orchestrator:blocked`, `orchestrator:review`, and `orchestrator:done`.
-- Treat issue comments as an append-only execution journal. The normal
-  transition is `planned -> ready -> dispatched -> running -> handoff ->
-  verified -> done`; a failure goes to `blocked` with a reason, not directly to
-  done.
-- A blocked issue comment must state: blocker, evidence, impact, owner of the
-  decision, and the smallest next action. Do not silently retry a failed task
-  with a different model or CLI.
+- In local mode, the supervisor alone updates `INDEX.md`; each worker owns only
+  its task/handoff file. Commit the initial index before parallel workers need
+  it, following the repository's normal commit policy.
+- A blocked record must state blocker, evidence, impact, decision owner, and
+  smallest next action. Do not silently retry a failed task with a different
+  model or CLI.
 - Distinguish `dispatch-failed`, `worker-error`, `timeout`, and `no-handoff`.
-  Preserve the previous dispatch ID and evidence; create a new attempt ID only
-  after recording why a retry is justified.
-- Never double-dispatch an active issue. Inspect its latest dispatch marker,
+  Preserve previous evidence; create a new attempt ID only after recording why
+  a retry is justified.
+- Never double-dispatch an active task. Inspect its latest dispatch marker,
   process handle, branch, and worktree first. If those are unavailable, mark it
   blocked and re-plan instead of guessing whether it completed.
-- If a worker overlaps another worker's scope, stop the later writer, preserve
-  its evidence, and re-plan the ownership boundary or run it after integration.
-- Use GitHub API fallback only for a missing high-level `gh` operation; retain
-  the same repository and issue scope, then verify the API response.
+- If GitHub returns, follow the reconciliation procedure in
+  [references/file-fallback.md](references/file-fallback.md). Do not
+  automatically create duplicate issues, comments, or labels.

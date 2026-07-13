@@ -10,8 +10,8 @@ require `cao-server` or CAO MCP handoff tools.
 - [codex-cli](skills/codex-cli/SKILL.md) delegates with `codex exec`.
 - [antigravity-cli](skills/antigravity-cli/SKILL.md) delegates with `agy`.
 - [orchestrator-cli](skills/orchestrator-cli/SKILL.md) coordinates GitHub
-  Issues and direct CLI workers with CAO-inspired assign/handoff semantics,
-  without starting `cao-server`.
+  Issues or offline Markdown records and direct CLI workers with CAO-inspired
+  assign/handoff semantics, without starting `cao-server`.
 
 ## Install With `npx skills`
 
@@ -40,6 +40,13 @@ From a clone of this repository, use `.` instead of the GitHub source:
 ```bash
 npx skills add . --skill claude-cli --skill codex-cli --skill antigravity-cli --skill orchestrator-cli --agent claude-code --agent codex --agent antigravity-cli --yes
 ```
+
+## Offline Coordination
+
+When GitHub is offline, unavailable, or returns an error, `orchestrator-cli`
+uses tracked Markdown records in the target repository's `.orchestrator/`
+directory instead of losing plans, tasks, handoffs, or bug reports. It does not
+automatically mirror those records to GitHub after connectivity returns.
 
 ## Permission Policy
 
