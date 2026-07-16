@@ -1,4 +1,4 @@
 interface:
   display_name: "Claude CLI"
-  short_description: "Delegate tasks directly to Claude Code"
-  default_prompt: "Use $claude-cli to delegate a scoped task directly to Claude Code without CAO."
+  short_description: "Drive and resume native Claude sessions"
+  default_prompt: "Use $claude-cli to delegate a scoped task, inject follow-ups into a live Claude process when possible, and preserve its native session ID for recovery."

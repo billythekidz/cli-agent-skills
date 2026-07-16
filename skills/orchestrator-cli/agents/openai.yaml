@@ -1,4 +1,4 @@
 interface:
   display_name: "Orchestrator CLI"
-  short_description: "Coordinate GitHub or offline Markdown tasks"
-  default_prompt: "Use $orchestrator-cli to plan, dispatch, and track tasks through GitHub Issues or local Markdown when GitHub is unavailable."
+  short_description: "Coordinate durable tasks and live native CLI sessions"
+  default_prompt: "Use $orchestrator-cli to plan, dispatch, and track tasks through GitHub Issues or local Markdown, preserving exact provider-native IDs and live-process prompt routes for follow-ups."

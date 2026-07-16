@@ -48,6 +48,10 @@ Control plane: `github` | `local-markdown`
 - CLI / model tier: <for example: codex-cli / balanced>
 - Mode: `assign` | `handoff`
 - Dispatch ID: `issue-<number>-attempt-<n>`
+- Native session: `new` | `resume <provider>/<exact ID>`
+- Process state: `active` | `stopped` | `unavailable`
+- Live transport: `stdin JSONL` | `app-server stdio` | `original interactive PTY` | `unavailable`
+- Current turn: `<turn ID>` | `awaiting result` | `queued` | `idle` | `unavailable`
 - Worktree / branch: <absolute path and branch>
 - May change: <exclusive paths>
 - Must not change: <excluded paths and control-plane state>
@@ -57,9 +61,38 @@ Control plane: `github` | `local-markdown`
 - <observable behavior>
 
 ## Required handoff
-Return changed files, branch/commit, verification output, blockers, and a
-proposed handoff record. Do not update the control plane directly.
+Return provider and exact native session ID (or `unavailable`), process and
+live-transport state, current/queued turn state, changed files, branch/commit,
+verification output, blockers, and a proposed handoff record. Do not update the
+control plane directly.
 ```
+
+## Active Follow-up Examples
+
+Use exactly one route below for a task whose original process is still alive.
+These are transport instructions, not substitutes for the recorded native ID.
+
+| Provider | Record before sending | Send | Record after sending |
+| --- | --- | --- | --- |
+| Claude | process handle, `stdin JSONL`, `awaiting result` | enqueue one JSON user message; write it after `result` | `awaiting result` for the new turn |
+| Codex | app-server handle, `threadId`, active `turnId` | `turn/steer` with `expectedTurnId` | steer accepted, or `queued` if not steerable |
+| Antigravity | original PTY/process handle, `processing` | type prompt plus Enter into that PTY | `queued` until the UI finishes it |
+
+Example live state before a Codex injection:
+
+```text
+Provider: codex-cli
+Native session: codex / thread-123
+Process state: active
+Live transport: app-server stdio
+Current turn: turn-456
+Follow-up: "After the current check, explain the failing assertion."
+Action: turn/steer expectedTurnId=turn-456
+```
+
+If the route is no longer live, set `Process state: stopped` and use only the
+exact provider-native resume procedure. Do not silently create a second active
+process for the same task.
 
 ## Parent Dispatch Ledger
 
@@ -68,11 +101,11 @@ local Markdown mode. Update it only after a reviewed handoff; child handoffs
 remain the detailed event history.
 
 ```markdown
-| Record | Dispatch | Mode | CLI / tier | Owns | Depends on | State |
-| --- | --- | --- | --- | --- | --- | --- |
-| #121 / TASK-001 | `issue-121-attempt-1` | `assign` | claude-cli / balanced | read-only | none | dispatched |
-| #122 / TASK-002 | `issue-122-attempt-1` | `assign` | codex-cli / balanced | `tests/webhook-retry.*` | none | dispatched |
-| #124 / TASK-004 | not dispatched | `handoff` | codex-cli / high | `src/webhooks/*` | #121, #122 | blocked |
+| Record | Dispatch | Mode | CLI / tier | Native session | Live transport | Owns | Depends on | State |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| #121 / TASK-001 | `issue-121-attempt-1` | `assign` | claude-cli / balanced | pending capture | stdin JSONL / awaiting result | read-only | none | dispatched |
+| #122 / TASK-002 | `issue-122-attempt-1` | `assign` | codex-cli / balanced | pending capture | app-server stdio / active turn | `tests/webhook-retry.*` | none | dispatched |
+| #124 / TASK-004 | not dispatched | `handoff` | codex-cli / high | not started | unavailable | `src/webhooks/*` | #121, #122 | blocked |
 ```
 
 ## Worker Prompt
@@ -82,6 +115,10 @@ Task record: #<number> <URL> | `.orchestrator/tasks/TASK-<number>.md`
 Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
 Workspace: <absolute dedicated worktree>
+Native session: new | resume <provider>/<exact ID>; do not use a latest-session flag
+Process state: active | stopped | unavailable
+Live transport: stdin JSONL | app-server stdio | original interactive PTY | unavailable
+Current turn: <turn ID> | awaiting result | queued | idle | unavailable
 Objective: <one outcome>
 Own: <paths>
 Do not change: <paths, control-plane state, deployment state>
@@ -89,9 +126,10 @@ Inputs: <dependency evidence>
 Verify: <exact command>
 
 Inspect before editing. Make the smallest in-scope change. Do not use GitHub
-CLI or modify task/index/handoff records. Return: summary; changed files;
-branch/commit; verification output; blockers; and a concise proposed handoff
-record.
+CLI or modify task/index/handoff records. Return: native session provider and
+exact ID (or unavailable); process/transport/current-turn state; summary;
+changed files; branch/commit; verification output; blockers; and a concise
+proposed handoff record.
 ```
 
 ## Handoff Record
@@ -103,6 +141,10 @@ Post this as an Issue comment in GitHub mode or save it as
 ## Handoff
 Dispatch: `issue-<number>-attempt-<n>`
 Status: `ready for review` | `blocked` | `complete`
+Native session: `<provider>` / `<exact ID or unavailable>` / `new | resumed`
+Process state: `active` | `stopped` | `unavailable`
+Live transport: `<route or unavailable>`
+Current turn: `<turn ID>` | `awaiting result` | `queued` | `idle` | `unavailable`
 
 Changed: `<paths>`
 Branch/commit: `<branch>` / `<sha or none>`

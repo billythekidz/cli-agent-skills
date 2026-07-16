@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex CLI"
-  short_description: "Delegate tasks directly to Codex CLI"
-  default_prompt: "Use $codex-cli to delegate a scoped task directly to Codex CLI without CAO."
+  short_description: "Delegate, steer, and resume Codex sessions"
+  default_prompt: "Use $codex-cli to run a scoped Codex task, steer or queue prompts in an active native session, and preserve exact IDs for follow-up."

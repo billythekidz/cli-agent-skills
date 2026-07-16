@@ -1,6 +1,6 @@
 ---
 name: orchestrator-cli
-description: "Coordinate parallel and sequential engineering work directly through GitHub Issues when available, or durable local Markdown records when GitHub is offline or failing, with local Claude Code, Codex, and Antigravity CLIs. Use when an agent needs to create a plan, split and route tasks, track handoffs, report bugs, recover blocked work, or synthesize results."
+description: "Coordinate parallel and sequential engineering work directly through GitHub Issues when available, or durable local Markdown records when GitHub is offline or failing, with local Claude Code, Codex, and Antigravity CLIs. Preserve provider-native session identity while planning, splitting, routing, tracking handoffs, recovering blocked work, or synthesizing results."
 ---
 
 # Direct CLI Task Orchestration
@@ -27,6 +27,10 @@ handoff tools.
   externally sandboxed environments.
 - Require evidence before moving a task to review or done: changed files,
   commit or branch, verification output, and known blockers.
+- Treat the provider-native session or conversation ID as the only identity for
+  a continued CLI conversation. A dispatch ID, GitHub issue, local task file,
+  process handle, worktree, and tmux session are related records, not native
+  session IDs.
 
 ## CAO-Derived Dispatch Model
 
@@ -47,6 +51,48 @@ CAO's workflow service currently reserves rather than implements its own
 `parallel` mode. Implement parallelism explicitly with a dependency graph,
 separate worktrees, durable task records, and a single integration gate. See
 [references/dispatch-protocol.md](references/dispatch-protocol.md).
+
+## Native Session Continuity
+
+For every direct CLI task, keep a native session envelope in the active control
+plane:
+
+```text
+Provider: claude-cli | codex-cli | antigravity-cli
+Native session: <exact provider ID> | unavailable
+Workspace/worktree: <absolute path>
+Agent/model/profile: <selected value or default>
+Process state: active | stopped | unavailable
+Live transport: stdin JSONL | app-server stdio | original interactive PTY | unavailable
+Current turn: <turn ID> | awaiting result | idle | unavailable
+Session action: new | resumed
+```
+
+- Capture the ID after initial launch and include it in the reviewed handoff.
+  Never substitute the dispatch ID, issue number, local task ID, or process
+  handle.
+- A process handle, PTY, and live transport are operational routes, not native
+  session identity. Retain both the route and the native ID while a process is
+  active.
+- For an active task, inject the follow-up through its recorded live transport:
+  Claude's `stdin JSONL` stream waits for a `result` boundary; Codex app-server
+  gets its exact active turn ID from `turn/started`, then uses `turn/steer`, or queues a later
+  `turn/start`; Antigravity writes the prompt plus Enter to its original
+  interactive PTY. Use one writer per transport and record whether a prompt is
+  queued or has completed.
+- Only after the original process is stopped or its live transport is lost,
+  route a follow-up through the matching direct CLI skill using that exact ID:
+  `claude -r <id>`, `codex exec resume <id>`, or
+  `agy --conversation <id>`. A provider-native ID cannot cross providers.
+- Do not use `claude -c`, `codex exec resume --last`, or `agy -c` for a routed
+  task unless the user explicitly asks for the unique latest local conversation
+  and no concurrent task can be selected by mistake.
+- Do not resume a still-running process with a second CLI invocation. If no
+  compatible live transport was retained, wait for or deliberately stop that
+  process through the authorized task workflow first.
+- If the CLI reports no stable ID, or exact resume fails, record the fact and
+  start a new native session only with a factual handoff of the prior result.
+  Mark the action `new`; never claim session continuity that did not occur.
 
 ## Select The Control Plane
 
@@ -145,10 +191,12 @@ changing local task records.
    only after preflight passes. Mark dependency gates as `handoff`; wait for
    their structured results before the next task. Give every worker the task
    record, dispatch ID, absolute worktree, allowed paths, prohibited paths,
-   verification command, and required handoff fields.
+   verification command, native-session action, process/transport state, and
+   required handoff fields.
 7. **Track**: The supervisor reviews every worker result, then posts the
    handoff comment in GitHub mode or writes the matching handoff Markdown file
-   in local mode. Mark blockers with evidence and the next decision needed.
+   in local mode. Record the native session envelope, mark blockers with
+   evidence, and state the next decision needed.
 8. **Integrate**: Reserve one sequential owner for conflict resolution, final
    verification, and the parent-record summary. Do not let multiple workers
    edit the integration worktree.
@@ -171,6 +219,10 @@ Task record: <GitHub URL/#number or .orchestrator/tasks/TASK-<number>.md>
 Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
 Workspace: <absolute, dedicated worktree>
+Native session: new, then return provider and exact native ID
+Process state: active | stopped
+Live transport: <route or unavailable>
+Current turn: <turn ID, result boundary, queued prompt, or unavailable>
 Objective: <one observable outcome>
 Own: <allowed paths>
 Do not change: <paths and external state>
@@ -208,8 +260,16 @@ supervisor verifies it and writes the GitHub comment or local handoff file. For
   Preserve previous evidence; create a new attempt ID only after recording why
   a retry is justified.
 - Never double-dispatch an active task. Inspect its latest dispatch marker,
-  process handle, branch, and worktree first. If those are unavailable, mark it
-  blocked and re-plan instead of guessing whether it completed.
+  process handle, branch, worktree, and native session envelope first. If those
+  are unavailable, mark it blocked and re-plan instead of guessing whether it
+  completed.
+- For an active task with a compatible retained transport, inject the follow-up
+  into that same process and update its queued/current-turn state. Do not make
+  a second CLI process merely to deliver the prompt.
+- For a stopped task that needs a follow-up, resume its exact recorded native
+  session before considering a new attempt. If that ID is unavailable or resume
+  fails, preserve the error and prior evidence, then launch a clearly labeled
+  new session with a factual handoff.
 - If GitHub returns, follow the reconciliation procedure in
   [references/file-fallback.md](references/file-fallback.md). Do not
   automatically create duplicate issues, comments, or labels.

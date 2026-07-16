@@ -1,4 +1,4 @@
 interface:
   display_name: "Antigravity CLI"
-  short_description: "Delegate tasks directly to Antigravity"
-  default_prompt: "Use $antigravity-cli to delegate a scoped task directly to agy without CAO."
+  short_description: "Drive live and resumed Antigravity sessions"
+  default_prompt: "Use $antigravity-cli to drive one live interactive agy process or resume its native conversation without CAO."
