@@ -50,6 +50,52 @@ connection, or provider calls:
 python -m unittest tests.test_skill_contract -v
 ```
 
+Run the default suite on the current macOS. It includes local CLI
+`--version`/`--help` smoke checks, but does not send provider prompts:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+The offline suite also includes two focused contract/edge-case modules that
+do not invoke any CLI:
+
+```bash
+# Real contract checks grounded in each skill's actual commands, flags,
+# permission defaults, dispatch protocol, and model routing.
+python3 -m unittest tests.test_skill_fidelity -v
+
+# Deeper macOS/Unix edge cases: APFS Unicode (NFC/NFD) decomposition,
+# /private/var symlink resolution, JsonlProcess send/wait/close internals,
+# provider/timeout parsing corner cases, and parser failure modes.
+python3 -m unittest tests.test_macos_deep -v
+```
+
+Run the real provider workflow suite. It creates temporary Git workspaces,
+asks each selected CLI to make one bounded change, captures the real native
+session ID, and resumes that exact ID. The orchestrator case uses local
+`.orchestrator/` Markdown records and dispatches a real worker; it does not
+write GitHub issues:
+
+```bash
+RUN_REAL_CLI_SKILL_TESTS=1 \
+REAL_CLI_SKILL_PROVIDERS=claude,codex,antigravity,orchestrator \
+python3 -m unittest tests.test_real_cli_workflows -v
+```
+
+Enable the optional Antigravity same-process PTY probe separately:
+
+```bash
+RUN_REAL_CLI_SKILL_TESTS=1 \
+RUN_REAL_CLI_ANTIGRAVITY_PTY=1 \
+REAL_CLI_SKILL_PROVIDERS=antigravity \
+python3 -m unittest tests.test_real_cli_workflows -v
+```
+
+These real workflow tests require authenticated local CLIs, consume provider
+quota, persist normal native session history/cache, and are intentionally
+never run by default.
+
 The native-session probes are deliberately opt-in. They create an isolated
 temporary Git repository for each selected CLI, start one harmless conversation,
 capture its native ID, resume that exact ID, and require the follow-up to return
