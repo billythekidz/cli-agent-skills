@@ -47,8 +47,13 @@ Run the fast documentation contract suite without credentials, a network
 connection, or provider calls:
 
 ```powershell
-python -m unittest tests.test_skill_contract -v
+python -m unittest tests.test_skill_contract tests.test_orchestrator_supervisor -v
 ```
+
+`tests.test_orchestrator_supervisor` starts the bundled lightweight supervisor
+with a fixture worker, sends two prompts into the same retained process, and
+checks the shared PID, live handle, native-session capture, and JSONL log. It
+uses only Python stdlib and runs on Windows, macOS, and Linux.
 
 Run the default suite on the current macOS. It includes local CLI
 `--version`/`--help` smoke checks, but does not send provider prompts:
@@ -94,9 +99,7 @@ python3 -m unittest tests.test_real_cli_workflows -v
 
 These real workflow tests require authenticated local CLIs, consume provider
 quota, persist normal native session history/cache, and are intentionally
-never run by default.
-
-The native-session probes are deliberately opt-in. They create an isolated
+never run by default.The native-session probes are deliberately opt-in. They create an isolated
 temporary Git repository for each selected CLI, start one harmless conversation,
 capture its native ID, resume that exact ID, and require the follow-up to return
 a random token from the first turn. They use disabled tools for Claude,

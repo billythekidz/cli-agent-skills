@@ -53,6 +53,21 @@ class SkillLayoutTests(unittest.TestCase):
             with self.subTest(reference=reference):
                 self.assertTrue((SKILLS / reference).is_file())
 
+    def test_orchestrator_bundles_lightweight_supervisor(self) -> None:
+        supervisor = SKILLS / "orchestrator-cli" / "scripts" / "orchestrator_supervisor.py"
+        self.assertTrue(supervisor.is_file())
+        text = supervisor.read_text(encoding="utf-8")
+        for fragment in (
+            "subprocess.Popen",
+            "socketserver.ThreadingTCPServer",
+            "sqlite3",
+            "live-transport-unavailable",
+            "claude-stream-json",
+            "codex-app-server",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, text)
+
 
 class NativeSessionContractTests(unittest.TestCase):
     def assert_mentions(self, text: str, *fragments: str) -> None:
@@ -234,6 +249,9 @@ class LiveProcessContractTests(unittest.TestCase):
             "turn/steer",
             "original interactive PTY",
             "operational routing data, not the provider-native session ID",
+            "Optional Live Process Supervisor",
+            "<orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py start",
+            "live-transport-unavailable",
             "Active Follow-up Examples",
             "Action: turn/steer expectedTurnId=turn-456",
         )

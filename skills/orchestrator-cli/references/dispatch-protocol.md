@@ -74,6 +74,30 @@ CLI did not report a stable ID. While the worker remains active, update the
 same record with its transport and current-turn state before accepting another
 prompt.
 
+When a task needs prompt injection into the same live process, start it through
+the bundled lightweight supervisor:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json start \
+  --dispatch-id task-TASK-12-attempt-1 \
+  --provider claude-cli \
+  --protocol claude-stream-json \
+  --workspace /absolute/worktree \
+  -- claude -p --input-format stream-json --output-format stream-json
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json send \
+  task-TASK-12-attempt-1 "Continue in the same live process."
+```
+
+The supervisor records process status in
+`.orchestrator/runtime/supervisor.sqlite3` and raw output in
+`.orchestrator/runtime/logs/*.jsonl`. It keeps only stdio/JSONL handles, so the
+portable protocols are `text`, `jsonl`, `claude-stream-json`, and
+`codex-app-server`. If `status` shows `live_handle: false` for an active
+dispatch, or `send` returns `live-transport-unavailable`, do not start a second
+active process. Record the lost route, then wait, stop, or recover by exact
+provider-native session ID according to the task state.
+
 ## Parallel Fan-Out
 
 Run a batch only when all child issues are ready and every writer has a unique
