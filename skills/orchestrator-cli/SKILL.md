@@ -94,6 +94,55 @@ Session action: new | resumed
   start a new native session only with a factual handoff of the prior result.
   Mark the action `new`; never claim session continuity that did not occur.
 
+## Optional Live Process Supervisor
+
+For unattended local runs that need follow-up prompts injected into an already
+running process, use the bundled lightweight supervisor instead of CAO:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json doctor
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json start \
+  --dispatch-id task-TASK-12-attempt-1 \
+  --provider claude-cli \
+  --protocol claude-stream-json \
+  --workspace /absolute/worktree \
+  -- claude -p --input-format stream-json --output-format stream-json
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json send \
+  task-TASK-12-attempt-1 "Use the same live session and add this evidence."
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json status \
+  task-TASK-12-attempt-1
+```
+
+The supervisor is a single-machine localhost JSONL daemon started on demand. It
+stores durable records in `.orchestrator/runtime/supervisor.sqlite3` and raw
+process logs in `.orchestrator/runtime/logs/*.jsonl`. It is cross-platform for
+stdio/JSONL transports on Windows, macOS, and Linux because it uses Python
+stdlib `subprocess`, `socket`, and `sqlite3`.
+
+Use the supervisor only as the retained live route. The durable control plane is
+still GitHub Issues or `.orchestrator/` Markdown, and the provider-native
+session ID is still the provider's ID. If the supervisor exits, crashes, or is
+not reachable, mark the route `live-transport-unavailable`; do not claim prompt
+injection into that process remains possible.
+
+Supported prompt protocols:
+
+| Protocol | Use for | Injection shape |
+| --- | --- | --- |
+| `text` | Test workers or CLIs that accept plain stdin lines | `prompt + "\n"` |
+| `jsonl` | Generic JSONL workers | `{"type":"user","text":...}` |
+| `claude-stream-json` | One retained Claude stream-json process | JSONL user message |
+| `codex-app-server` | One retained Codex app-server process | `turn/steer` when current turn is known, otherwise `turn/start` |
+
+Interactive PTY input is not implemented in this stdlib supervisor. For
+Antigravity live follow-up, use the original terminal/PTY described in
+`antigravity-cli`; if that PTY is not retained, record
+`live-transport-unavailable` and use exact `agy --conversation <id>` recovery
+only after the active process is stopped.
+
 ## Select The Control Plane
 
 If the user says the work must stay offline, enter local Markdown mode without
@@ -192,7 +241,9 @@ changing local task records.
    their structured results before the next task. Give every worker the task
    record, dispatch ID, absolute worktree, allowed paths, prohibited paths,
    verification command, native-session action, process/transport state, and
-   required handoff fields.
+   required handoff fields. When follow-up injection may be needed, launch the
+   process through `<orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py start`
+   and record the runtime log path in the dispatch record.
 7. **Track**: The supervisor reviews every worker result, then posts the
    handoff comment in GitHub mode or writes the matching handoff Markdown file
    in local mode. Record the native session envelope, mark blockers with
