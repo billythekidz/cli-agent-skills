@@ -46,6 +46,15 @@ add a state file to the target repository unless the user asks.
 5. Read the result, inspect the diff, and run the requested verification yourself.
 Do not accept an unverified claim that tests passed.
 
+## Startup Timeout Recovery
+
+Give startup at most 300 seconds. If Claude remains unavailable or blocked by
+MCP/plugin initialization, stop that process and follow
+[orchestrator-cli's fresh-start procedure](../orchestrator-cli/references/fresh-start-without-integrations.md).
+The fresh Claude probe uses `--bare`, an empty `--mcp-config`, and
+`--strict-mcp-config`; it must be a new native session, not a retry of the
+timed-out process.
+
 ## Default Automation And Coordination
 
 - This skill defaults to `--dangerously-skip-permissions`. It auto-approves all
@@ -65,7 +74,7 @@ prompt. `claude -p` becomes a JSONL input stream when paired with
 `--input-format stream-json` and `--output-format stream-json`:
 
 ```text
-claude -p --input-format stream-json --output-format stream-json \
+claude -p --input-format stream-json --output-format stream-json --verbose \
   --no-session-persistence --tools "" --permission-mode plan --safe-mode
 {"type":"user","message":{"role":"user","content":"first prompt"}}
 {"type":"user","message":{"role":"user","content":"follow-up"}}

@@ -114,6 +114,15 @@ invocation. Do not combine it with `--sandbox`.
 `--dangerously-bypass-hook-trust` remains opt-in because it is a separate hook-
 trust bypass rather than the normal command-approval path.
 
+## Startup Timeout Recovery
+
+After 300 seconds without a usable prompt, stop the process and preserve its
+JSONL diagnostics. Run the [fresh-start-without-integrations](../../orchestrator-cli/references/fresh-start-without-integrations.md)
+procedure with a disposable `CODEX_HOME`, `--ignore-user-config`, and
+`--ephemeral`. Copy only the auth file when preserving the existing login is
+required. A successful probe is a new native session, not a continuation of
+the timed-out process.
+
 ## Prompt Shape
 
 Use this shape for every direct task:

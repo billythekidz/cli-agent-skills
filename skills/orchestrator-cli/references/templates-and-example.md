@@ -50,7 +50,7 @@ Control plane: `github` | `local-markdown`
 - Dispatch ID: `issue-<number>-attempt-<n>`
 - Native session: `new` | `resume <provider>/<exact ID>`
 - Process state: `active` | `stopped` | `unavailable`
-- Live transport: `stdin JSONL` | `app-server stdio` | `original interactive PTY` | `unavailable`
+- Live transport: `stdin JSONL` | `app-server stdio` | `tmux PTY` | `Windows pywinpty PTY` | `original interactive PTY` | `unavailable`
 - Current turn: `<turn ID>` | `awaiting result` | `queued` | `idle` | `unavailable`
 - Worktree / branch: <absolute path and branch>
 - May change: <exclusive paths>
@@ -117,7 +117,7 @@ Mode: assign | handoff
 Workspace: <absolute dedicated worktree>
 Native session: new | resume <provider>/<exact ID>; do not use a latest-session flag
 Process state: active | stopped | unavailable
-Live transport: stdin JSONL | app-server stdio | original interactive PTY | unavailable
+Live transport: stdin JSONL | app-server stdio | tmux PTY | Windows pywinpty PTY | original interactive PTY | unavailable
 Current turn: <turn ID> | awaiting result | queued | idle | unavailable
 Objective: <one outcome>
 Own: <paths>
@@ -206,8 +206,8 @@ issues:
 | `#121` Reproduce and map retry path | Read-only investigation; return logs and likely owner paths | `assign`: `claude-cli` with a balanced or high reasoning tier | None |
 | `#122` Define regression test | Only `tests/webhook-retry.*` | `assign`: `codex-cli` with a balanced tier | None |
 | `#123` Document metric and alert expectation | Only `docs/observability/*` | `assign`: `antigravity-cli` with a fast or medium tier | None |
-| `#124` Implement idempotency guard | Only `src/webhooks/*`; consume `#121` and merged `#122` | `handoff`: `codex-cli` with high or flagship tier | `#121`, `#122` |
-| `#125` Integrate and verify | Integration worktree; no parallel writers | `handoff`: `claude-cli` or `codex-cli` with flagship tier | `#123`, `#124` |
+| `#124` Implement idempotency guard | Only `src/webhooks/*`; consume `#121` and merged `#122` | `handoff`: `antigravity-cli` with `gemini-3.6-flash-high` (developer) | `#121`, `#122` |
+| `#125` Integrate and verify | Integration worktree; no parallel writers | `handoff`: `antigravity-cli` with `claude-sonnet-4-6` (reviewer) | `#123`, `#124` |
 
 1. Inspect existing issues and labels. Post the parent plan and dispatch ledger
    with the five linked tasks, their file boundaries, and attempt IDs.

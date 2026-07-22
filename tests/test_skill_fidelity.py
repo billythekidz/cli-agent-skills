@@ -336,6 +336,7 @@ class OrchestratorDispatchProtocolTests(unittest.TestCase):
             "dispatch-failed",
             "worker-error",
             "timeout",
+            "startup-blocked-by-integrations",
             "no-handoff",
             "misrouted-handoff",
             "native-session-unavailable",
@@ -488,6 +489,20 @@ class ModelRoutingTests(unittest.TestCase):
         # The Antigravity display names were captured on a specific date.
         self.assertRegex(ref, r"2026-07-\d{2}")
 
+    def test_routing_documents_default_dev_reviewer_pairing(self) -> None:
+        """The standard implement-then-review loop pins two Antigravity models."""
+        ref = read("skills/orchestrator-cli/references/cli-model-routing.md")
+        for model in ("gemini-3.6-flash-high", "claude-sonnet-4-6"):
+            with self.subTest(model=model):
+                self.assertIn(model, ref)
+
+    def test_antigravity_skill_states_default_role_models(self) -> None:
+        """The antigravity-cli skill must name both default role models."""
+        body = read("skills/antigravity-cli/SKILL.md")
+        for model in ("gemini-3.6-flash-high", "claude-sonnet-4-6"):
+            with self.subTest(model=model):
+                self.assertIn(model, body)
+
 
 class StatusAndRecoveryTests(unittest.TestCase):
     """The orchestrator's state machine and double-dispatch prevention."""
@@ -507,9 +522,15 @@ class StatusAndRecoveryTests(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertIn(field, skill)
 
-    def test_skill_distinguishes_four_failure_types(self) -> None:
+    def test_skill_distinguishes_failure_types(self) -> None:
         skill = read("skills/orchestrator-cli/SKILL.md")
-        for failure in ("dispatch-failed", "worker-error", "timeout", "no-handoff"):
+        for failure in (
+            "dispatch-failed",
+            "worker-error",
+            "timeout",
+            "startup-blocked-by-integrations",
+            "no-handoff",
+        ):
             with self.subTest(failure=failure):
                 self.assertIn(failure, skill)
 
@@ -545,6 +566,45 @@ class AntigravityCacheContractTests(unittest.TestCase):
         """Cache lookup must match the exact *resolved* workspace, not raw text."""
         combined = skill_text("antigravity-cli", "cli-reference.md")
         self.assertRegex(combined, r"(?i)(match the exact resolved workspace|exact resolved workspace)")
+
+
+class FreshStartupRecoveryContractTests(unittest.TestCase):
+    """All CLI skills must converge on the same no-integration recovery path."""
+
+    def test_shared_fresh_start_reference_is_linked_by_all_cli_skills(self) -> None:
+        reference = SKILLS / "orchestrator-cli" / "references" / "fresh-start-without-integrations.md"
+        self.assertTrue(reference.is_file())
+        for skill in ("claude-cli", "codex-cli", "antigravity-cli", "orchestrator-cli"):
+            with self.subTest(skill=skill):
+                body = read(f"skills/{skill}/SKILL.md")
+                self.assertIn("fresh-start-without-integrations.md", body)
+                self.assertIn("300 seconds", body)
+
+    def test_fresh_probe_disables_provider_integrations(self) -> None:
+        claude = skill_text("claude-cli", "cli-reference.md")
+        for flag in ("--bare", "--strict-mcp-config", "--mcp-config"):
+            with self.subTest(provider="claude", flag=flag):
+                self.assertIn(flag, claude)
+
+        codex = skill_text("codex-cli", "cli-reference.md")
+        for flag in ("CODEX_HOME", "--ignore-user-config", "--ephemeral"):
+            with self.subTest(provider="codex", flag=flag):
+                self.assertIn(flag, codex)
+
+        antigravity = skill_text("antigravity-cli", "cli-reference.md")
+        for phrase in ("--gemini_dir", "workspace-local `.agents/mcp_config.json`"):
+            with self.subTest(provider="antigravity", phrase=phrase):
+                self.assertIn(phrase, antigravity)
+        self.assertIn(
+            '"mcpServers":{}',
+            read("skills/orchestrator-cli/references/fresh-start-without-integrations.md"),
+        )
+
+    def test_recovery_forbids_continuing_timed_out_native_session(self) -> None:
+        combined = skill_text("orchestrator-cli", "fresh-start-without-integrations.md")
+        assert_contains_phrase(self, combined, "create a new dispatch/native session")
+        assert_contains_phrase(self, combined, "Do not keep retrying the same process")
+        assert_contains_phrase(self, combined, "startup-blocked-by-integrations")
 
 
 class OpenaiYamlInterfaceTests(unittest.TestCase):
@@ -642,6 +702,120 @@ class CodexIsolationAndSandboxTests(unittest.TestCase):
     def test_reference_documents_output_last_message_flag(self) -> None:
         ref = read("skills/codex-cli/references/cli-reference.md")
         self.assertIn("--output-last-message", ref)
+
+
+class OrchestratorLiveSupervisorContractTests(unittest.TestCase):
+    """The bundled live-process supervisor: documentation contract + boundaries.
+
+    Grounded in the "Optional Live Process Supervisor" section of
+    orchestrator-cli/SKILL.md and the dispatch-protocol supervisor block.  The
+    supervisor is a *retained live route*, never the durable control plane and
+    never the provider-native session identity.
+    """
+
+    def setUp(self) -> None:
+        self.skill = read("skills/orchestrator-cli/SKILL.md")
+        self.protocol = read("skills/orchestrator-cli/references/dispatch-protocol.md")
+
+    def test_supervisor_section_is_documented(self) -> None:
+        self.assertIn("## Optional Live Process Supervisor", self.skill)
+
+    def test_supervisor_script_path_is_documented_with_send_and_status(self) -> None:
+        # The SKILL.md shows start, send, and status against the script path.
+        for command in (
+            "orchestrator_supervisor.py --json doctor",
+            "orchestrator_supervisor.py --json start",
+            "orchestrator_supervisor.py --json send",
+            "orchestrator_supervisor.py --json status",
+        ):
+            with self.subTest(command=command):
+                self.assertIn(command, self.skill)
+
+    def test_supervisor_is_localhost_jsonl_daemon_started_on_demand(self) -> None:
+        assert_contains_phrase(
+            self,
+            self.skill,
+            "single-machine localhost JSONL daemon started on demand",
+        )
+
+    def test_supervisor_uses_python_stdlib_only(self) -> None:
+        # Portability claim rests on these stdlib modules.
+        assert_contains_phrase(
+            self,
+            self.skill,
+            "stdlib `subprocess`, `socket`, and `sqlite3`",
+        )
+
+    def test_supervisor_documents_durable_storage_paths(self) -> None:
+        # Durable records and raw logs live under .orchestrator/runtime.
+        self.assertIn(".orchestrator/runtime/supervisor.sqlite3", self.skill)
+        self.assertIn(".orchestrator/runtime/logs/*.jsonl", self.skill)
+
+    def test_supervisor_protocol_table_lists_all_five_protocols(self) -> None:
+        for protocol in (
+            "text",
+            "jsonl",
+            "claude-stream-json",
+            "codex-app-server",
+            "antigravity-pty",
+        ):
+            with self.subTest(protocol=protocol):
+                self.assertIn(f"`{protocol}`", self.skill)
+
+    def test_supervisor_codex_protocol_chooses_steer_or_start(self) -> None:
+        # codex-app-server must steer a known turn, else turn/start a new one.
+        assert_contains_phrase(
+            self,
+            self.skill,
+            "`turn/steer` when current turn is known, otherwise `turn/start`",
+        )
+
+    def test_supervisor_documents_pty_backend_setup(self) -> None:
+        for phrase in (
+            "isolated tmux session",
+            "pywinpty/ConPTY",
+            "brew install tmux",
+            "py -m pip install pywinpty",
+            "--protocol antigravity-pty",
+            "--transport auto",
+            "never auto-installs dependencies",
+            "live-transport-unavailable",
+        ):
+            with self.subTest(phrase=phrase):
+                assert_contains_phrase(self, self.skill, phrase)
+
+    def test_supervisor_routes_antigravity_to_original_pty(self) -> None:
+        body = self.skill
+        assert_contains_phrase(self, body, "use the original terminal/PTY described in")
+        assert_contains_phrase(self, body, "agy --conversation <id>")
+
+    def test_supervisor_is_retained_route_not_control_plane(self) -> None:
+        # The durable control plane stays GitHub Issues / .orchestrator Markdown.
+        assert_contains_phrase(self, self.skill, "Use the supervisor only as the retained live route")
+        assert_contains_phrase(self, self.skill, "still GitHub Issues or `.orchestrator/` Markdown")
+
+    def test_supervisor_loss_records_live_transport_unavailable(self) -> None:
+        # If it exits/crashes/is unreachable, do not claim injection is possible.
+        assert_contains_phrase(self, self.skill, "mark the route `live-transport-unavailable`")
+
+    def test_dispatch_protocol_documents_supervisor_start_and_send(self) -> None:
+        # The protocol reference carries the same start/send usage with runtime paths.
+        self.assertIn("orchestrator_supervisor.py", self.protocol)
+        self.assertIn("supervisor.sqlite3", self.protocol)
+        self.assertIn("logs/*.jsonl", self.protocol)
+
+    def test_dispatch_protocol_governs_lost_live_handle(self) -> None:
+        # live_handle: false for an active dispatch must not spawn a second process.
+        assert_contains_phrase(self, self.protocol, "live_handle: false")
+        assert_contains_phrase(self, self.protocol, "do not start a second active process")
+
+    def test_orchestration_workflow_routes_injection_through_supervisor(self) -> None:
+        # Step 6 of the workflow launches through the supervisor start command.
+        assert_contains_phrase(
+            self,
+            self.skill,
+            "scripts/orchestrator_supervisor.py start",
+        )
 
 
 if __name__ == "__main__":

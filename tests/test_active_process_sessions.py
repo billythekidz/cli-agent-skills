@@ -244,6 +244,7 @@ class ActiveProcessLiveTests(unittest.TestCase):
                 "stream-json",
                 "--output-format",
                 "stream-json",
+                "--verbose",
                 "--no-session-persistence",
                 "--tools",
                 "",

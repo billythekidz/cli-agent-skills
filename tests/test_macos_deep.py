@@ -477,5 +477,190 @@ class NativeSessionPromptContractTests(unittest.TestCase):
         self.assertIn(nonce, prompt)
 
 
+# ---------------------------------------------------------------------------
+# Orchestrator live-process supervisor (pure functions, offline)
+# ---------------------------------------------------------------------------
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+SUPERVISOR_SCRIPT = (
+    REPOSITORY / "skills" / "orchestrator-cli" / "scripts" / "orchestrator_supervisor.py"
+)
+
+
+def _load_supervisor_module():
+    """Import the supervisor script as a module without starting its server."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "orchestrator_supervisor_under_test", SUPERVISOR_SCRIPT
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class SupervisorEncodePromptTests(unittest.TestCase):
+    """encode_prompt must produce the exact per-protocol injection payloads.
+
+    These are the contracts the SKILL.md protocol table documents:
+    text -> prompt + newline; jsonl -> {type:user,text}; claude-stream-json ->
+    a JSONL user message; codex-app-server -> turn/steer for a known turn else
+    turn/start, both requiring a retained thread ID.
+    """
+
+    def setUp(self) -> None:
+        self.supervisor = _load_supervisor_module()
+
+    def test_text_protocol_appends_newline(self) -> None:
+        self.assertEqual(
+            self.supervisor.encode_prompt("text", "hello world", None),
+            "hello world\n",
+        )
+
+    def test_jsonl_protocol_emits_user_text_object(self) -> None:
+        payload = json.loads(self.supervisor.encode_prompt("jsonl", "hi", None))
+        self.assertEqual(payload, {"type": "user", "text": "hi"})
+
+    def test_claude_stream_json_emits_user_message_envelope(self) -> None:
+        payload = json.loads(
+            self.supervisor.encode_prompt("claude-stream-json", "hi", None)
+        )
+        self.assertEqual(payload["type"], "user")
+        self.assertEqual(payload["message"]["role"], "user")
+        self.assertEqual(
+            payload["message"]["content"],
+            [{"type": "text", "text": "hi"}],
+        )
+
+    def test_codex_protocol_requires_thread_id(self) -> None:
+        """Without a retained thread ID, codex injection cannot be encoded."""
+        with self.assertRaises(ValueError):
+            self.supervisor.encode_prompt("codex-app-server", "hi", None, None)
+
+    def test_codex_protocol_uses_turn_start_when_no_active_turn(self) -> None:
+        payload = json.loads(
+            self.supervisor.encode_prompt("codex-app-server", "hi", None, "thread-7")
+        )
+        self.assertEqual(payload["method"], "turn/start")
+        self.assertEqual(payload["params"]["threadId"], "thread-7")
+        self.assertEqual(
+            payload["params"]["input"], [{"type": "text", "text": "hi"}]
+        )
+
+    def test_codex_protocol_uses_turn_steer_for_active_turn(self) -> None:
+        payload = json.loads(
+            self.supervisor.encode_prompt(
+                "codex-app-server", "hi", "turn-9", "thread-7"
+            )
+        )
+        self.assertEqual(payload["method"], "turn/steer")
+        self.assertEqual(payload["params"]["expectedTurnId"], "turn-9")
+        self.assertEqual(payload["params"]["threadId"], "thread-7")
+        self.assertEqual(
+            payload["params"]["input"], [{"type": "text", "text": "hi"}]
+        )
+
+    def test_unsupported_protocol_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            self.supervisor.encode_prompt("bogus", "x", None)
+
+    def test_all_payloads_are_single_line_jsonl(self) -> None:
+        """JSON protocols emit one valid JSON line; text emits one plain line.
+
+        The supervisor writes each payload as exactly one stdin line, so the
+        body before the trailing newline must contain no embedded newline.
+        text is plain stdin input (not JSON); the others must parse as JSON.
+        """
+        cases = [
+            ("text", "p", None, None),
+            ("jsonl", "p", None, None),
+            ("claude-stream-json", "p", None, None),
+            ("codex-app-server", "p", None, "thread"),
+            ("codex-app-server", "p", "turn", "thread"),
+        ]
+        for protocol, prompt, turn, thread in cases:
+            with self.subTest(protocol=protocol, turn=turn):
+                encoded = self.supervisor.encode_prompt(protocol, prompt, turn, thread)
+                self.assertTrue(encoded.endswith("\n"))
+                # Exactly one line: no newline before the trailing one.
+                body = encoded[:-1]
+                self.assertNotIn("\n", body)
+                if protocol != "text":
+                    json.loads(body)
+        for protocol, prompt, turn, thread in cases:
+            with self.subTest(protocol=protocol, turn=turn):
+                encoded = self.supervisor.encode_prompt(protocol, prompt, turn, thread)
+                self.assertTrue(encoded.endswith("\n"))
+                body = encoded[:-1]
+                self.assertNotIn("\n", body)
+                if protocol == "text":
+                    self.assertEqual(body, prompt)
+                else:
+                    json.loads(body)
+
+
+class SupervisorHelperTests(unittest.TestCase):
+    """safe_filename, first_string, and RuntimePaths behavior on macOS."""
+
+    def setUp(self) -> None:
+        self.supervisor = _load_supervisor_module()
+
+    def test_safe_filename_preserves_safe_chars_and_replaces_others(self) -> None:
+        fn = self.supervisor.safe_filename("task-TASK_12.attempt-1/spaces here")
+        self.assertNotIn(" ", fn)
+        self.assertNotIn("/", fn)
+        # Alphanumerics, dot, underscore, and dash are preserved verbatim.
+        self.assertIn("task-TASK_12.attempt-1", fn)
+
+    def test_first_string_returns_first_present_string(self) -> None:
+        self.assertEqual(
+            self.supervisor.first_string({"a": "1", "b": "2"}, "a", "b"),
+            "1",
+        )
+        self.assertEqual(
+            self.supervisor.first_string({"a": None, "b": "2"}, "a", "b"),
+            "2",
+        )
+        self.assertIsNone(self.supervisor.first_string({"a": 123}, "a"))
+
+    def test_first_string_skips_empty_strings(self) -> None:
+        self.assertIsNone(self.supervisor.first_string({"a": ""}, "a"))
+
+    def test_runtime_paths_resolve_under_orchestrator_runtime(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cli-agent-runtime-") as root:
+            paths = self.supervisor.RuntimePaths(Path(root))
+            self.assertEqual(paths.db, Path(root) / "supervisor.sqlite3")
+            self.assertEqual(paths.server_info, Path(root) / "server.json")
+            self.assertEqual(paths.logs, Path(root) / "logs")
+            # ensure() creates both the root and logs directories.
+            paths.ensure()
+            self.assertTrue(paths.logs.is_dir())
+
+    def test_default_runtime_root_is_dot_orchestrator_runtime(self) -> None:
+        root = self.supervisor.default_runtime_root(Path("/tmp/sample-repo"))
+        self.assertEqual(root, Path("/tmp/sample-repo/.orchestrator/runtime"))
+
+
+class SupervisorResponseShapeTests(unittest.TestCase):
+    """ok()/err() helpers produce the documented JSON envelope."""
+
+    def setUp(self) -> None:
+        self.supervisor = _load_supervisor_module()
+
+    def test_ok_envelope_is_truthy_with_extra_fields(self) -> None:
+        payload = self.supervisor.ok(pid=123, log_file="/x.jsonl")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["pid"], 123)
+        self.assertEqual(payload["log_file"], "/x.jsonl")
+
+    def test_err_envelope_carries_code_and_message(self) -> None:
+        payload = self.supervisor.err("live-transport-unavailable", "no handle")
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "live-transport-unavailable")
+        self.assertEqual(payload["error"]["message"], "no handle")
+
+
 if __name__ == "__main__":
     unittest.main()

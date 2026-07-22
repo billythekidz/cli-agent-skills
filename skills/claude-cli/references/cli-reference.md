@@ -11,7 +11,7 @@ Run the relevant help command again when the installed CLI version changes.
 | Default headless single task | `claude -p "prompt" --dangerously-skip-permissions` |
 | Structured result | `--output-format json` with `-p` |
 | Streamed events | `--output-format stream-json` with `-p` |
-| Live multi-prompt process | `claude -p --input-format stream-json --output-format stream-json` |
+| Live multi-prompt process | `claude -p --input-format stream-json --output-format stream-json --verbose` |
 | Resume exact session | `claude -r <session-id> -p "follow-up" --dangerously-skip-permissions` |
 | Continue latest local session (exception only) | `claude -c -p "follow-up" --dangerously-skip-permissions` |
 | Disable persistence (not resumable) | `--no-session-persistence` |
@@ -26,7 +26,7 @@ For multiple prompts sent to one still-running process, keep one `claude -p`
 process open and write newline-delimited JSON user messages to its stdin:
 
 ```text
-claude -p --input-format stream-json --output-format stream-json \
+claude -p --input-format stream-json --output-format stream-json --verbose \
   --no-session-persistence --tools "" --permission-mode plan --safe-mode
 {"type":"user","message":{"role":"user","content":"first prompt"}}
 {"type":"user","message":{"role":"user","content":"follow-up"}}
@@ -82,6 +82,14 @@ Local help lists `default`, `acceptEdits`, `plan`, `auto`, `dontAsk`, and
 This skill defaults to `--dangerously-skip-permissions` for every direct task.
 It auto-approves Claude Code permission checks for that invocation. Use `plan`
 or `acceptEdits` only when a task explicitly requests a safer override.
+
+## Startup Timeout Recovery
+
+After 300 seconds without a usable prompt, stop the process and preserve its
+diagnostic output. Run the [fresh-start-without-integrations](../../orchestrator-cli/references/fresh-start-without-integrations.md)
+procedure with `--bare`, an empty `--mcp-config`, and
+`--strict-mcp-config`. A successful probe is a new native session, not a retry
+of the timed-out process.
 
 ## Prompt Shape
 

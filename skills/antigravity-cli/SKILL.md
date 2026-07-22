@@ -67,6 +67,18 @@ yourself. Do not accept an unverified claim that tests passed.
 - Pass `--agent <name>` only after checking the locally available names with
   `agy agent` or `agy agents`.
 
+## Default Role Models
+
+For orchestration runs, use these Antigravity model defaults by role (confirm
+with `agy models` first):
+
+- Developer / implementation tasks: `--model gemini-3.6-flash-high`
+- Reviewer / code review of a task: `--model claude-sonnet-4-6`
+
+Run the reviewer as its own native conversation — a second `agy -p` invocation
+that inspects the developer's diff and returns an approval verdict, not a
+continuation of the developer's session. Record each conversation ID separately.
+
 ## Live Process Prompt Delivery
 
 Use a live interactive process when a follow-up must enter the same running
@@ -75,6 +87,38 @@ conversation, rather than recover it after process exit. On Windows PowerShell:
 ```powershell
 & $agy --sandbox -i "initial prompt"
 ```
+
+### Managed PTY prerequisites
+
+The native terminal already provides a PTY for a direct interactive run. When
+`orchestrator-cli` must retain and address the live process, use its
+`antigravity-pty` route: an isolated tmux session on macOS, or the optional
+pywinpty/ConPTY bridge on Windows.
+
+Check the host before starting the managed route:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json doctor
+```
+
+On macOS, install tmux if it is not present:
+
+```bash
+brew install tmux
+tmux -V
+```
+
+On Windows PowerShell, install pywinpty if the doctor output says the Windows
+PTY backend is unavailable:
+
+```powershell
+py -m pip install pywinpty
+```
+
+These are optional host dependencies; the skill does not auto-install them.
+Run `doctor` again after installation. A missing dependency is an environment
+finding and must be reported as `live-transport-unavailable`, not hidden by
+falling back to a second `agy` process.
 
 - Retain that original terminal/PTY and process handle. Send each follow-up to
   the same PTY followed by carriage return (`CR`, the Enter key). Antigravity's
@@ -88,6 +132,9 @@ conversation, rather than recover it after process exit. On Windows PowerShell:
 - The process handle and PTY are operational transport, not native session identity.
   If the original PTY is lost, do not claim live injection succeeded;
   wait for or deliberately stop the process, then use native recovery.
+- With the orchestrator-managed route, tmux session/window/socket metadata or
+  the Windows PTY handle is operational routing data only. It never replaces
+  the native Antigravity conversation UUID.
 
 ## Native Session Consistency
 
@@ -110,6 +157,16 @@ Only after the original process has stopped or its PTY is unavailable, use
 `& $agy --conversation <id> -p "follow-up" --mode accept-edits --dangerously-skip-permissions`
 for the recorded conversation. For a stuck headless run, add `--log-file <path>`
 and a deliberate `--print-timeout <duration>`.
+
+Give provider startup at most 300 seconds. If `agy` remains `Loading`,
+`connecting`, or `Initializing`, do not keep the same PTY alive indefinitely
+and do not assume it will ignore a broken MCP server. Stop the route, preserve
+the provider log, and follow
+[orchestrator-cli's fresh-start procedure](../orchestrator-cli/references/fresh-start-without-integrations.md).
+The fresh probe uses a temporary `--gemini_dir` with an empty MCP profile and
+no imported plugins. If it succeeds, launch a new native conversation with a
+new dispatch ID; `--conversation` is not a repair for a provider that never
+reached its first usable prompt.
 
 See [references/cli-reference.md](references/cli-reference.md) for the local
 help-derived command reference and prompt template.

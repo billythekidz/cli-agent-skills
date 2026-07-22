@@ -55,6 +55,18 @@ with a fixture worker, sends two prompts into the same retained process, and
 checks the shared PID, live handle, native-session capture, and JSONL log. It
 uses only Python stdlib and runs on Windows, macOS, and Linux.
 
+The macOS PTY integration test exercises the real tmux backend with an isolated
+socket and one retained pane (no provider quota):
+
+```bash
+python3 -m unittest tests.test_antigravity_pty -v
+```
+
+For Antigravity live routing, run supervisor `doctor` first. Install tmux with
+`brew install tmux` on macOS or pywinpty with `py -m pip install pywinpty` in
+Windows PowerShell when the doctor reports the backend missing. Tests and the
+supervisor never auto-install these optional dependencies.
+
 Run the default suite on the current macOS. It includes local CLI
 `--version`/`--help` smoke checks, but does not send provider prompts:
 
@@ -99,7 +111,78 @@ python3 -m unittest tests.test_real_cli_workflows -v
 
 These real workflow tests require authenticated local CLIs, consume provider
 quota, persist normal native session history/cache, and are intentionally
-never run by default.The native-session probes are deliberately opt-in. They create an isolated
+never run by default.
+
+Run the real `orchestrator-cli` supervisor against Claude stream-JSON and Codex
+app-server transports. This verifies the retained PID/live handle, native
+session capture, current turn, JSONL log, and same-process follow-up route:
+
+```bash
+RUN_REAL_CLI_SKILL_TESTS=1 \
+RUN_REAL_ORCHESTRATOR_SUPERVISOR_TESTS=1 \
+REAL_CLI_SKILL_PROVIDERS=claude,codex,orchestrator \
+python3 -m unittest tests.test_real_cli_workflows -v
+```
+
+Enable the real Antigravity supervisor PTY probe separately on macOS. It starts
+`agy` inside the isolated tmux backend, sends a follow-up through the supervisor,
+and verifies the same pane/PID and tmux metadata:
+
+```bash
+RUN_REAL_CLI_SKILL_TESTS=1 \
+RUN_REAL_ORCHESTRATOR_SUPERVISOR_TESTS=1 \
+RUN_REAL_ORCHESTRATOR_ANTIGRAVITY_PTY=1 \
+REAL_CLI_ANTIGRAVITY_PTY_TIMEOUT_SECONDS=300 \
+REAL_CLI_SKILL_PROVIDERS=antigravity,orchestrator \
+python3 -m unittest tests.test_real_cli_workflows -v
+```
+
+This opt-in probe requires an authenticated `agy` installation and consumes
+provider quota. On Windows, install `pywinpty` first; the macOS integration
+test remains the no-quota coverage for the tmux backend. The probe gives `agy`
+an isolated temporary `--gemini_dir` and `--log-file`, so unrelated user MCP
+servers (for example a slow `unity-mcp`) cannot delay the model request. The
+PTY timeout defaults to 300 seconds and can be increased with
+`REAL_CLI_ANTIGRAVITY_PTY_TIMEOUT_SECONDS`; a timeout failure includes the
+provider log tail for diagnosis.
+
+### Fresh startup recovery without MCP or plugins
+
+If any provider has not reached its first usable prompt after 300 seconds,
+record the timeout and stop that process. Do not retry the same native session.
+Use [fresh-start-without-integrations](skills/orchestrator-cli/references/fresh-start-without-integrations.md)
+to launch a disposable probe:
+
+- Antigravity: temporary `--gemini_dir` with an empty `mcp_config.json` and no
+  workspace-local `.agents/mcp_config.json` or imported plugins.
+- Claude: `--bare --strict-mcp-config --mcp-config <empty-json>`.
+- Codex: disposable `CODEX_HOME --ignore-user-config --ephemeral`; copy only
+  the auth file when preserving the existing login is necessary.
+
+If the fresh probe succeeds, classify the original failure as
+`startup-blocked-by-integrations` and create a new dispatch/native session with
+a factual handoff. If it fails too, investigate authentication, network,
+binary/runtime, or PTY health instead of increasing retries indefinitely.
+
+Run the real fresh-start probes explicitly; they use the authenticated local
+CLIs, consume quota, and default to a 300-second provider budget:
+
+```bash
+RUN_REAL_CLI_SKILL_TESTS=1 \
+RUN_REAL_CLI_FRESH_START_TESTS=1 \
+REAL_CLI_FRESH_START_TIMEOUT_SECONDS=300 \
+REAL_CLI_SKILL_PROVIDERS=claude,codex,antigravity \
+python3 -m unittest \
+  tests.test_real_cli_workflows.RealCliWorkflowTests.test_real_fresh_probe_claude_without_mcp_or_plugins \
+  tests.test_real_cli_workflows.RealCliWorkflowTests.test_real_fresh_probe_codex_without_mcp_or_plugins \
+  tests.test_real_cli_workflows.RealCliWorkflowTests.test_real_fresh_probe_antigravity_without_mcp_or_plugins -v
+```
+
+To reproduce the blocked-MCP-to-fresh recovery path for Antigravity, also set
+`RUN_REAL_CLI_FRESH_START_FAILURE_TESTS=1`; that case uses a shortened local
+failure budget by default and then runs the clean probe.
+
+The native-session probes are deliberately opt-in. They create an isolated
 temporary Git repository for each selected CLI, start one harmless conversation,
 capture its native ID, resume that exact ID, and require the follow-up to return
 a random token from the first turn. They use disabled tools for Claude,
@@ -150,11 +233,14 @@ names the same active turn, then interrupts and observes its completion. It
 intentionally does not load the normal user `CODEX_HOME`, so it cannot launch
 unrelated MCP servers.
 
-Antigravity's active-process behavior is interactive-PTY-only, so it has a
-manual probe rather than an unattended JSONL test. In one terminal, start the
-real application and, while its first turn still shows as running, type a
-follow-up into that **same** terminal and press Enter. The UI should queue it;
-do not use `--conversation` for this test.
+Antigravity's active-process behavior is interactive-PTY-only. The offline
+suite verifies the supervisor's tmux/pywinpty transport boundary with a fixture
+PTY worker; the provider smoke remains opt-in because it requires an
+authenticated interactive `agy` process. On macOS, the managed route is an
+isolated tmux pane. On Windows, use the installed pywinpty/ConPTY bridge.
+For a direct manual probe, start the real application and, while its first turn
+still shows as running, type a follow-up into that **same** terminal and press
+Enter. Do not use `--conversation` for this in-flight test.
 
 ```powershell
 $agy = Get-Command agy -CommandType Application | Select-Object -First 1 -ExpandProperty Source

@@ -1,8 +1,9 @@
 # Antigravity CLI Reference
 
 Verified from local `agy --help`, `agy help`, and `agy agent --help` on
-2026-07-14. Run the relevant help command again when the installed CLI version
-changes.
+2026-07-14. The model list (including `gemini-3.6-flash-high` and
+`claude-sonnet-4-6`) was re-verified against `agy models` on 2026-07-22. Run the
+relevant help command again when the installed CLI version changes.
 
 ## Direct Delegation Commands
 
@@ -16,7 +17,9 @@ changes.
 | Continue latest conversation (exception only) | `agy -c -p "follow-up" --mode accept-edits --dangerously-skip-permissions` |
 | Explicit safer override | `--mode plan` or `--sandbox` |
 | Choose an agent | `--agent <name>` |
-| Choose a model | `--model <model>` |
+| Choose a model | `--model <model>` (list available IDs with `agy models`) |
+| Default developer model | `--model gemini-3.6-flash-high` |
+| Default reviewer model | `--model claude-sonnet-4-6` |
 | Add a workspace | `--add-dir <path>` |
 | Restrict terminal execution | `--sandbox` |
 | Bound print-mode wait | `--print-timeout <duration>` |
@@ -36,6 +39,37 @@ $agy = Get-Command agy -CommandType Application | Select-Object -First 1 -Expand
 if (-not $agy) { throw "agy application was not found on PATH." }
 & $agy --sandbox -i "initial prompt"
 ```
+
+### Managed PTY prerequisites
+
+For unattended same-process follow-ups, `orchestrator-cli` uses
+`antigravity-pty`. On macOS it creates an isolated tmux session around the
+interactive process. On Windows it uses the optional pywinpty package, backed
+by the available Windows PTY implementation (ConPTY/WinPTY).
+
+Run the supervisor doctor first:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json doctor
+```
+
+If tmux is missing on macOS, install it manually:
+
+```bash
+brew install tmux
+tmux -V
+```
+
+If the Windows backend is missing, install pywinpty from PowerShell:
+
+```powershell
+py -m pip install pywinpty
+```
+
+The skill never auto-installs host dependencies. Re-run `doctor` after either
+installation. If the dependency is unavailable, report
+`live-transport-unavailable`; do not substitute `agy --conversation <id>` while
+the original process is still running.
 
 Keep that original process and terminal/PTY alive. Write each follow-up prompt
 to the same PTY and terminate it with carriage return (`CR`, the Enter key).
@@ -65,7 +99,7 @@ assistant> SECOND-PTY-MARKER
 
 Do not automate this by piping to `agy -p`, and do not substitute
 `agy --conversation <id>`: both create a different process. A PTY automation
-adapter is required for unattended testing; on Windows a broken `winpty`
+adapter is required for unattended testing; a broken tmux or pywinpty
 installation is a test-environment failure, not evidence that the CLI lacks
 interactive queueing.
 
@@ -91,6 +125,15 @@ This skill defaults to `--dangerously-skip-permissions` for every direct task.
 It auto-approves Antigravity tool permission requests for that invocation. Use
 `--sandbox` or `--mode plan` only when a task explicitly requests a safer
 override.
+
+## Startup Timeout Recovery
+
+After 300 seconds without a usable prompt, stop the process and preserve
+`--log-file` output. Do not assume a `Loading` MCP server will be ignored. Run
+the [fresh-start-without-integrations](../../orchestrator-cli/references/fresh-start-without-integrations.md)
+procedure with a temporary `--gemini_dir`, an empty `mcp_config.json`, and no
+workspace-local `.agents/mcp_config.json` or imported plugins. A successful
+probe is a new native session, not a continuation of the timed-out process.
 
 ## Prompt Shape
 

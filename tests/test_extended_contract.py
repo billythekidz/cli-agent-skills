@@ -59,6 +59,7 @@ class ReferenceFileCompletenessTests(unittest.TestCase):
         "orchestrator-cli/references/file-fallback.md",
         "orchestrator-cli/references/github-issue-operations.md",
         "orchestrator-cli/references/cli-model-routing.md",
+        "orchestrator-cli/references/fresh-start-without-integrations.md",
     }
 
     def test_all_reference_files_exist(self) -> None:
@@ -783,6 +784,9 @@ class EnvironmentVariableContractTests(unittest.TestCase):
         readme = read("README.md")
         self.assertIn("SKILL_TEST_TIMEOUT_SECONDS", readme)
         self.assertIn("ACTIVE_PROCESS_TEST_TIMEOUT_SECONDS", readme)
+        self.assertIn("REAL_CLI_FRESH_START_TIMEOUT_SECONDS", readme)
+        self.assertIn("RUN_REAL_CLI_FRESH_START_TESTS", readme)
+        self.assertIn("RUN_REAL_CLI_FRESH_START_FAILURE_TESTS", readme)
 
     def test_codex_auth_env_var_documented(self) -> None:
         readme = read("README.md")
