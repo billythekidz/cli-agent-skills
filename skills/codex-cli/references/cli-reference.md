@@ -43,9 +43,9 @@ Use the smallest command that matches the delivery requirement:
 
 | Requirement | Preferred command | Why |
 | --- | --- | --- |
-| One bounded worker task | `codex exec ... --json` | Non-interactive, pipe-friendly, easy to capture and verify |
+| One bounded worker task | `codex exec --dangerously-bypass-approvals-and-sandbox ... --json` | Non-interactive, pipe-friendly, easy to capture and verify |
 | Code review only | `codex review --uncommitted`, `--base`, or `--commit` | Uses the dedicated review command instead of a generic implementation prompt |
-| Same-process programmatic follow-up | `codex app-server` | JSONL protocol exposes `threadId`, active `turnId`, and `turn/steer` |
+| Same-process programmatic follow-up | `codex app-server -c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"'` | JSONL protocol exposes `threadId`, active `turnId`, and `turn/steer` without approval prompts |
 | Human interactive work | `codex [prompt]` and `codex resume` | Uses the native terminal UI and its Enter/Tab controls |
 | Installation or config failure | `codex doctor` | Diagnostic path; does not spend a worker turn |
 

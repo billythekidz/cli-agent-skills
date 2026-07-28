@@ -8,8 +8,10 @@ description: "Coordinate parallel and sequential engineering work directly throu
 Use GitHub Issues as the control plane when `gh` can read the target repository.
 When GitHub is unavailable, use `.orchestrator/` Markdown records in the target
 repository instead. Delegate bounded work headlessly by default through
-`claude -p`, `codex exec`, and `agy -p`; do not start `cao-server`, call CAO, or
-use CAO handoff tools.
+`claude -p --output-format json --dangerously-skip-permissions`,
+`codex exec --dangerously-bypass-approvals-and-sandbox --json`, and
+`agy -p --output-format json --mode accept-edits --dangerously-skip-permissions`;
+do not start `cao-server`, call CAO, or use CAO handoff tools.
 
 ## Operating Boundaries
 
@@ -75,12 +77,16 @@ Session action: new | resumed
   Never substitute the dispatch ID, issue number, local task ID, or process
   handle.
 - Prefer `headless-one-shot` for every independent `assign` and blocking
-  `handoff`: Claude `-p --output-format json`, Codex `exec --json`, or
-  Antigravity `-p --output-format json`/`stream-json`. Capture stdout/stderr,
+  `handoff`: Claude `-p --output-format json --dangerously-skip-permissions`,
+  Codex `exec --dangerously-bypass-approvals-and-sandbox --json`, or
+  Antigravity `-p --output-format json`/`stream-json` with
+  `--mode accept-edits --dangerously-skip-permissions`. Capture stdout/stderr,
   inspect the result, and let the process exit before writing the handoff.
 - Use `headless-live` only when a follow-up must arrive before process exit:
-  Claude `-p --input-format stream-json --output-format stream-json` or Codex
-  `app-server` JSONL. These are still pipe-based and do not need a PTY.
+  Claude `-p --input-format stream-json --output-format stream-json
+  --dangerously-skip-permissions` or Codex `app-server` JSONL started with
+  `-c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"'`.
+  These are still pipe-based and do not need a PTY.
 - Use `interactive-live` only when the user requests a native UI or the
   provider has no suitable headless-live route. Antigravity `-i` and Codex TUI
   use the original console; an external controller needs a PTY only for that
@@ -128,7 +134,8 @@ python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json st
   --provider claude-cli \
   --protocol claude-stream-json \
   --workspace /absolute/worktree \
-  -- claude -p --input-format stream-json --output-format stream-json
+  -- claude -p --input-format stream-json --output-format stream-json \
+     --dangerously-skip-permissions
 
 python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json send \
   task-TASK-12-attempt-1 "Use the same live session and add this evidence."
@@ -368,7 +375,10 @@ blockers, and a proposed handoff record. Do not change the control plane.
 For direct execution, follow the corresponding `claude-cli`, `codex-cli`, or
 `antigravity-cli` skill. Select its headless command first and record the
 execution mode. Their default unattended flags are intentionally dangerous;
-keep the task one record wide and inspect the result before the next
+the flags are part of the executable command, not optional prose. For
+Codex `app-server`, pass the same unattended policy as config overrides:
+`-c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"'`.
+Keep the task one record wide and inspect the result before the next
 control-plane update.
 
 For `assign`, capture the process handle and raw output in a temporary result

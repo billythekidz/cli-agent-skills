@@ -10,11 +10,11 @@ Run the relevant help command again when the installed CLI version changes.
 | --- | --- |
 | Inspect the installed CLI | `claude --help` or `claude -h` |
 | Interactive session | `claude [prompt]` |
-| Default headless single task | `claude -p "prompt" --dangerously-skip-permissions` |
-| Structured result | `--output-format json` with `-p` |
+| Default headless single task | `claude -p "prompt" --output-format json --dangerously-skip-permissions` |
+| Structured result | `claude -p --output-format json --dangerously-skip-permissions` |
 | Schema-constrained structured result | `--json-schema <schema>` with `-p` |
 | Streamed events | `--output-format stream-json` with `-p` |
-| Live multi-prompt process | `claude -p --input-format stream-json --output-format stream-json --verbose` |
+| Live multi-prompt process | `claude -p --input-format stream-json --output-format stream-json --verbose --dangerously-skip-permissions` |
 | Resume exact session | `claude -r <session-id> -p "follow-up" --dangerously-skip-permissions` |
 | Continue latest local session (exception only) | `claude -c -p "follow-up" --dangerously-skip-permissions` |
 | Disable persistence (not resumable) | `--no-session-persistence` |

@@ -14,8 +14,8 @@ relevant help command again when the installed CLI version changes.
 | Initial interactive prompt | `agy -i "prompt"` |
 | Live multi-prompt interactive process (Windows) | `& $agy --sandbox -i "initial prompt"` |
 | Default headless single task | `agy -p "prompt" --mode accept-edits --dangerously-skip-permissions` |
-| Structured single result | `agy -p "prompt" --output-format json ...` |
-| Streamed events and final result | `agy -p "prompt" --output-format stream-json ...` |
+| Structured single result | `agy -p "prompt" --output-format json --mode accept-edits --dangerously-skip-permissions ...` |
+| Streamed events and final result | `agy -p "prompt" --output-format stream-json --mode accept-edits --dangerously-skip-permissions ...` |
 | Constrain the final structured result | `--json-schema <schema string or path>` |
 | Resume exact conversation after process exit | `agy --conversation <id> -p "follow-up" --mode accept-edits --dangerously-skip-permissions` |
 | Continue latest conversation (exception only) | `agy -c -p "follow-up" --mode accept-edits --dangerously-skip-permissions` |
@@ -40,9 +40,9 @@ argument.
 
 | Requirement | Preferred command | Why |
 | --- | --- | --- |
-| One bounded worker task | `agy -p ... --output-format json` | One machine-readable result and ordinary pipe capture |
-| Progress/events plus final result | `agy -p ... --output-format stream-json` | Stream events without a PTY |
-| Schema-constrained final result | `agy -p ... --output-format stream-json --json-schema <schema>` | Structured final-result contract |
+| One bounded worker task | `agy -p ... --output-format json --mode accept-edits --dangerously-skip-permissions` | One machine-readable result and ordinary pipe capture |
+| Progress/events plus final result | `agy -p ... --output-format stream-json --mode accept-edits --dangerously-skip-permissions` | Stream events without a PTY |
+| Schema-constrained final result | `agy -p ... --output-format stream-json --json-schema <schema> --mode accept-edits --dangerously-skip-permissions` | Structured final-result contract |
 | Same-process interactive follow-up | `agy -i ...` | The native UI can queue input in the original console |
 | Post-exit exact continuation | `agy --conversation <id> -p ...` | Creates a new process with the recorded native conversation |
 | Agent/model discovery | `agy agent` / `agy models` | Confirm local names before passing `--agent` or `--model` |

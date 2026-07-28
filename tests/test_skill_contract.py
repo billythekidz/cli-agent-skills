@@ -317,9 +317,9 @@ class LiveProcessContractTests(unittest.TestCase):
             "headless-one-shot",
             "headless-live",
             "interactive-live",
-            "claude -p --output-format json",
-            "codex exec --json",
-            "agy -p --output-format json",
+            "claude -p --output-format json --dangerously-skip-permissions",
+            "codex exec --dangerously-bypass-approvals-and-sandbox --json",
+            "agy -p --output-format json --mode accept-edits --dangerously-skip-permissions",
             "Prefer a headless one-shot command",
             "Never allocate a PTY for the default headless route",
         )

@@ -271,7 +271,11 @@ These skills default to unattended permission bypass for direct delegation:
 - Antigravity CLI: `--dangerously-skip-permissions`
 
 `orchestrator-cli` coordinates these direct workers. It keeps GitHub Issue
-writes explicitly scoped to the requested repository and issue numbers.
+writes explicitly scoped to the requested repository and issue numbers. Its
+Codex `app-server` live route uses the equivalent config overrides
+`-c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"'` because
+the app-server subcommand does not expose the one-shot bypass flag in its own
+options.
 
 This allows child agents to edit files and run commands without approval
 prompts. Install and use these skills only in workspaces and environments you

@@ -83,12 +83,21 @@ Use headless one-shot execution as the default for `assign` and `handoff`:
 
 | Provider | Default command | Record as |
 | --- | --- | --- |
-| Claude | `claude -p --output-format json ...` | `headless-one-shot`, stdout/stderr pipes |
-| Codex | `codex exec --json ...` | `headless-one-shot`, stdout/stderr pipes |
-| Antigravity | `agy -p --output-format json ...` or `stream-json` | `headless-one-shot`, stdout/stderr pipes |
+| Claude | `claude -p --output-format json --dangerously-skip-permissions ...` | `headless-one-shot`, stdout/stderr pipes |
+| Codex | `codex exec --dangerously-bypass-approvals-and-sandbox --json ...` | `headless-one-shot`, stdout/stderr pipes |
+| Antigravity | `agy -p --output-format json --mode accept-edits --dangerously-skip-permissions ...` or `stream-json` | `headless-one-shot`, stdout/stderr pipes |
+
+These are complete default worker commands. Do not omit the provider's
+unattended flag when converting a row into a real process invocation. For the
+Codex app-server live route, use its config overrides because the subcommand
+does not expose the one-shot bypass flag in its own options:
+`codex app-server -c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"'`.
+The app-server remains JSONL over stdio and does not need a PTY.
 
 Select a headless-live route only when the supervisor must send another prompt
-before the process exits: Claude stream-json stdin or Codex app-server stdio.
+before the process exits: Claude `stream-json` stdin with
+`--dangerously-skip-permissions`, or Codex app-server stdio with the config
+overrides above.
 Select interactive-live only for a requested/native UI workflow; use the
 original console or an externally controlled PTY for that UI. Do not create a
 PTY for a default headless worker.
@@ -102,10 +111,23 @@ python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json st
   --provider claude-cli \
   --protocol claude-stream-json \
   --workspace /absolute/worktree \
-  -- claude -p --input-format stream-json --output-format stream-json
+  -- claude -p --input-format stream-json --output-format stream-json \
+     --dangerously-skip-permissions
 
 python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json send \
   task-TASK-12-attempt-1 "Continue in the same live process."
+```
+
+For a Codex live route, keep the same unattended policy on the app-server
+process:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json start \
+  --dispatch-id task-TASK-13-attempt-1 \
+  --provider codex-cli \
+  --protocol codex-app-server \
+  --workspace /absolute/worktree \
+  -- codex app-server -c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"'
 ```
 
 The supervisor records process status in

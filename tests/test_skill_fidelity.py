@@ -50,6 +50,15 @@ LATEST_FALLBACK_FLAG = {
 
 DIRECT_SKILLS = ("claude-cli", "codex-cli", "antigravity-cli")
 
+ORCHESTRATOR_DEFAULT_COMMANDS = {
+    "claude-cli": "claude -p --output-format json --dangerously-skip-permissions",
+    "codex-cli": "codex exec --dangerously-bypass-approvals-and-sandbox --json",
+    "antigravity-cli": (
+        "agy -p --output-format json --mode accept-edits "
+        "--dangerously-skip-permissions"
+    ),
+}
+
 
 def read(relative_path: str) -> str:
     return (REPOSITORY / relative_path).read_text(encoding="utf-8")
@@ -127,6 +136,31 @@ class PermissionDefaultContractTests(unittest.TestCase):
         self.assertTrue(
             "agy agent" in body or "agy agents" in body,
             "Skill must tell the caller to inspect available agents first.",
+        )
+
+    def test_orchestrator_default_commands_include_provider_bypass(self) -> None:
+        """Orchestrator command tables must stay executable, not abbreviated."""
+        orchestrator_files = (
+            "skills/orchestrator-cli/SKILL.md",
+            "skills/orchestrator-cli/references/dispatch-protocol.md",
+            "skills/orchestrator-cli/references/templates-and-example.md",
+        )
+        combined = "\n".join(read(path) for path in orchestrator_files)
+        for provider, command in ORCHESTRATOR_DEFAULT_COMMANDS.items():
+            with self.subTest(provider=provider):
+                self.assertIn(command, norm(combined))
+
+    def test_orchestrator_codex_app_server_uses_yolo_config(self) -> None:
+        """Codex app-server uses config overrides instead of exec-only flags."""
+        combined = norm(
+            read("skills/orchestrator-cli/SKILL.md")
+            + read("skills/orchestrator-cli/references/dispatch-protocol.md")
+            + read("skills/orchestrator-cli/references/templates-and-example.md")
+        )
+        self.assertIn(
+            "codex app-server -c 'approval_policy=\"never\"' -c "
+            "'sandbox_mode=\"danger-full-access\"'",
+            combined,
         )
 
 

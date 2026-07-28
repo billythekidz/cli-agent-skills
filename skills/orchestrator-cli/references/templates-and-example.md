@@ -81,9 +81,14 @@ Use these commands first for independent tasks and dependency-gate handoffs:
 
 | Provider | Command | Execution mode | Transport |
 | --- | --- | --- | --- |
-| Claude | `claude -p --output-format json ...` | `headless-one-shot` | stdout/stderr pipes |
-| Codex | `codex exec --json ...` | `headless-one-shot` | stdout/stderr pipes |
-| Antigravity | `agy -p --output-format json ...` | `headless-one-shot` | stdout/stderr pipes |
+| Claude | `claude -p --output-format json --dangerously-skip-permissions ...` | `headless-one-shot` | stdout/stderr pipes |
+| Codex | `codex exec --dangerously-bypass-approvals-and-sandbox --json ...` | `headless-one-shot` | stdout/stderr pipes |
+| Antigravity | `agy -p --output-format json --mode accept-edits --dangerously-skip-permissions ...` | `headless-one-shot` | stdout/stderr pipes |
+
+The commands above are executable defaults, including the unattended
+permission policy. For the Codex app-server live route, start
+`codex app-server` with `-c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"'`; do not replace those config overrides
+with a PTY or an interactive approval prompt.
 
 Use Claude stream-json stdin or Codex app-server only when a same-process
 follow-up is required. Use interactive-live/PTY only for an explicit UI
