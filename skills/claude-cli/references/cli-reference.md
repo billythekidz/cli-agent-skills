@@ -1,15 +1,18 @@
 # Claude CLI Reference
 
-Verified from local `claude --help` and `claude auth --help` on 2026-07-14.
+Verified from the local `claude -h` help capture and `claude auth --help` on
+2026-07-28.
 Run the relevant help command again when the installed CLI version changes.
 
 ## Direct Delegation Commands
 
 | Need | Command or flag |
 | --- | --- |
+| Inspect the installed CLI | `claude --help` or `claude -h` |
 | Interactive session | `claude [prompt]` |
 | Default headless single task | `claude -p "prompt" --dangerously-skip-permissions` |
 | Structured result | `--output-format json` with `-p` |
+| Schema-constrained structured result | `--json-schema <schema>` with `-p` |
 | Streamed events | `--output-format stream-json` with `-p` |
 | Live multi-prompt process | `claude -p --input-format stream-json --output-format stream-json` |
 | Resume exact session | `claude -r <session-id> -p "follow-up" --dangerously-skip-permissions` |
@@ -17,8 +20,22 @@ Run the relevant help command again when the installed CLI version changes.
 | Disable persistence (not resumable) | `--no-session-persistence` |
 | Choose a model | `--model <model>` |
 | Bound API spend | `--max-budget-usd <amount>` with `-p` |
+| Print-mode model fallback | `--fallback-model <model>` |
 | Add an allowed workspace | `--add-dir <path>` |
+| Restrict built-in tools | `--tools ""` or `--tools <names...>` |
 | Check auth | `claude auth status` |
+
+## Command Selection
+
+| Requirement | Preferred command | Why |
+| --- | --- | --- |
+| One bounded worker task | `claude -p ... --output-format json` | One result, easy to capture and verify |
+| Validated structured result | `claude -p ... --json-schema <schema>` | Enforces the caller's result shape |
+| Same-process programmatic follow-up | `claude -p --input-format stream-json --output-format stream-json` | One native session with stdin JSONL delivery |
+| Human interactive work | `claude [prompt]` | Uses the native terminal UI |
+| Post-exit exact continuation | `claude -r <session-id> -p ...` | Resumes the recorded native session |
+| Cloud multi-agent review | `claude ultrareview ...` | Explicit optional review command; not the default worker route |
+| Installation/configuration diagnosis | `claude doctor` or `claude auth status` | Diagnose before spending a worker turn |
 
 ## Live Process Prompt Delivery
 
@@ -31,6 +48,10 @@ claude -p --input-format stream-json --output-format stream-json \
 {"type":"user","message":{"role":"user","content":"first prompt"}}
 {"type":"user","message":{"role":"user","content":"follow-up"}}
 ```
+
+The `-p/--print` JSON and `stream-json` modes are pipe-based. Keep stdin,
+stdout, and stderr as ordinary pipes; no PTY is required for machine-readable
+automation. Use a console/PTY only for the interactive `claude [prompt]` UI.
 
 ### Two-turn recipe
 

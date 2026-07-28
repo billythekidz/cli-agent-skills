@@ -1,20 +1,32 @@
 # Codex CLI Reference
 
-Verified from local `codex --help`, `codex exec --help`, `codex exec resume
---help`, `codex review --help`, and `codex app-server --help` on 2026-07-14.
-Run the relevant help command again when the installed CLI version changes.
+Verified from the local `codex -h` help capture and the existing local
+`codex exec --help`, `codex exec resume --help`, `codex review --help`, and
+`codex app-server --help` records on 2026-07-28. Run the relevant help command
+again when the installed CLI version changes.
 
 ## Direct Delegation Commands
 
 | Need | Command or flag |
 | --- | --- |
+| Inspect the installed CLI | `codex --help` or `codex -h` |
 | Default headless single task | `codex exec --dangerously-bypass-approvals-and-sandbox "prompt"` |
 | Default multi-line prompt | `prompt | codex exec --dangerously-bypass-approvals-and-sandbox -` |
 | Structured event stream | `--json` |
 | Write final message to a file | `--output-last-message <file>` |
+| Interactive TUI | `codex [prompt]` |
+| Resume an interactive session | `codex resume <session-id>` |
 | Explicit safer override | `--sandbox read-only` or `--sandbox workspace-write` |
+| Approval policy | `--ask-for-approval <untrusted|on-failure|on-request|never>` |
 | Extra writable directory | `--add-dir <dir>` |
-| Set working root | `--cd <dir>` |
+| Set working root | `-C, --cd <dir>` |
+| Choose model or profile | `--model <model>` or `--profile <name>` |
+| Attach initial images | `--image <file>...` |
+| Use an OSS local provider | `--oss --local-provider <lmstudio|ollama>` |
+| Disable TUI alternate screen | `--no-alt-screen` |
+| Enable live web search | `--search` only when needed |
+| Override config for one run | `--config <key=value>` |
+| Diagnose installation/configuration | `codex doctor` or `--strict-config` |
 | Disposable, non-resumable session | `--ephemeral` |
 | Resume exact task | `codex exec resume <session-id> --dangerously-bypass-approvals-and-sandbox "follow-up"` |
 | Resume latest task (exception only) | `codex exec resume --last --dangerously-bypass-approvals-and-sandbox "follow-up"` |
@@ -25,11 +37,33 @@ Run the relevant help command again when the installed CLI version changes.
 `--json` emits JSONL. Treat it as an event stream and preserve the final agent
 message separately if a later step needs a concise handoff.
 
+## Command Selection
+
+Use the smallest command that matches the delivery requirement:
+
+| Requirement | Preferred command | Why |
+| --- | --- | --- |
+| One bounded worker task | `codex exec ... --json` | Non-interactive, pipe-friendly, easy to capture and verify |
+| Code review only | `codex review --uncommitted`, `--base`, or `--commit` | Uses the dedicated review command instead of a generic implementation prompt |
+| Same-process programmatic follow-up | `codex app-server` | JSONL protocol exposes `threadId`, active `turnId`, and `turn/steer` |
+| Human interactive work | `codex [prompt]` and `codex resume` | Uses the native terminal UI and its Enter/Tab controls |
+| Installation or config failure | `codex doctor` | Diagnostic path; does not spend a worker turn |
+
+The root help also exposes `mcp`, `mcp-server`, `plugin`, `remote-control`,
+`cloud`, `exec-server`, `features`, `apply`, `archive`, `delete`, `fork`,
+`unarchive`, `update`, and `completion`. Use these only when the task explicitly
+targets that integration or lifecycle operation; they are not substitutes for
+`codex exec` delegation.
+
 ## Active Process Prompt Delivery
 
 `codex exec` is a one-shot non-interactive command. Piped stdin supplies the
 initial prompt/context only; it cannot inject later prompts into a running
 `exec` process.
+
+`codex exec` and `codex app-server` do not require a PTY. Keep their stdin,
+stdout, and stderr as ordinary pipes. A PTY or attached console is only for the
+interactive `codex` TUI; do not allocate one merely to capture `--json` output.
 
 ### Interactive TUI
 

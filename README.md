@@ -11,7 +11,8 @@ require `cao-server` or CAO MCP handoff tools.
 - [antigravity-cli](skills/antigravity-cli/SKILL.md) delegates with `agy`.
 - [orchestrator-cli](skills/orchestrator-cli/SKILL.md) coordinates GitHub
   Issues or offline Markdown records and direct CLI workers with CAO-inspired
-  assign/handoff semantics, without starting `cao-server`.
+  assign/handoff semantics, preferring headless workers without starting
+  `cao-server`.
 
 ## Install With `npx skills`
 
@@ -101,11 +102,13 @@ names the same active turn, then interrupts and observes its completion. It
 intentionally does not load the normal user `CODEX_HOME`, so it cannot launch
 unrelated MCP servers.
 
-Antigravity's active-process behavior is interactive-PTY-only, so it has a
-manual probe rather than an unattended JSONL test. In one terminal, start the
-real application and, while its first turn still shows as running, type a
-follow-up into that **same** terminal and press Enter. The UI should queue it;
-do not use `--conversation` for this test.
+Antigravity's same-process follow-up behavior is interactive-console/PTY-only,
+so it has a manual probe rather than an unattended JSONL test. Its headless
+`-p/--print` `json` and `stream-json` modes are pipe-friendly, but one-shot and
+cannot receive a later prompt in that same process. In one terminal, start the
+real interactive application and, while its first turn still shows as running,
+type a follow-up into that **same** terminal and press Enter. The UI should
+queue it; do not use `--conversation` for this test.
 
 ```powershell
 $agy = Get-Command agy -CommandType Application | Select-Object -First 1 -ExpandProperty Source

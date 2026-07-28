@@ -1,6 +1,6 @@
 ---
 name: codex-cli
-description: "Delegate a bounded coding, analysis, review, or implementation task directly to the local Codex CLI (`codex`) without CAO or cao-server. Use to run Codex headlessly, steer or queue prompts in an active native process, preserve and resume an exact native session ID, review changes, and verify the result."
+description: "Delegate a bounded coding, analysis, review, or implementation task directly to the local Codex CLI (`codex`) without CAO or cao-server. Choose the efficient headless, review, interactive, or app-server command, preserve and resume an exact native session ID, and verify the result."
 ---
 
 # Direct Codex CLI Delegation
@@ -15,6 +15,7 @@ skill is a Codex-native conversation, not a CAO or tmux session. Do not start
 
 ```powershell
 Get-Command codex -ErrorAction Stop
+codex --help
 codex exec --help
 ```
 
@@ -22,9 +23,10 @@ codex exec --help
 expected outcome, allowed files, constraints, and a verification command. Ask it
 to inspect first when the task is ambiguous or risky.
 
-3. Pipe multi-line prompts to `codex exec -` with the configured approval-and-
-sandbox bypass for every direct delegation. Omit `--ephemeral` when the task
-may need a follow-up because it does not persist a resumable session:
+3. Use `codex exec` for unattended work. Pipe multi-line prompts to
+   `codex exec -` with the configured approval-and-sandbox bypass for every
+   direct delegation. Omit `--ephemeral` when the task may need a follow-up
+   because it does not persist a resumable session:
 
 ```powershell
 $prompt = @'
@@ -50,6 +52,16 @@ yourself. Do not accept an unverified claim that tests passed.
   approval prompts and runs without Codex sandboxing for the invocation.
 - Use `--sandbox` only when a task explicitly requests a safer override. Do not
   combine it with `--dangerously-bypass-approvals-and-sandbox`.
+- Prefer `--cd <workspace>` and `--add-dir <path>` to make the worktree boundary
+  explicit. For a safer run, use `--sandbox workspace-write` or `--sandbox
+  read-only` together with an explicit `--ask-for-approval` policy.
+- Use `--search` only when the task needs current web information. It is not a
+  replacement for repository inspection and adds an external dependency.
+- Use `--strict-config` and `codex doctor` for configuration or installation
+  diagnosis, not as part of every worker launch.
+- Treat `remote`, `remote-control`, `cloud`, `exec-server`, `mcp-server`, and
+  `plugin` as explicit integration or experimental commands; they are not the
+  default delegation route.
 - Do not add `--dangerously-bypass-hook-trust` by default. It is a separate
   hook-trust bypass and requires an explicit request.
 - Do not run two writing agents against the same worktree. Use separate
@@ -62,6 +74,11 @@ yourself. Do not accept an unverified claim that tests passed.
 `codex exec` is a one-shot non-interactive run. Its stdin supplies initial
 prompt/context only; it is not a prompt stream for an already-running `exec`
 process.
+
+`codex exec` and `codex app-server` are pipe-based transports; they do not need a
+PTY. Keep stdin/stdout/stderr as ordinary pipes for JSONL automation. A console
+or PTY is relevant only when a human or external terminal controller drives the
+interactive `codex` TUI.
 
 For a human-operated persistent session, start `codex` without `exec`. While
 Codex is working, press Enter to steer the current turn or Tab to queue a
@@ -104,8 +121,11 @@ record the returned `threadId` with the normal task handoff.
 ## Review And Continuation
 
 Use `codex review --uncommitted "focus on regressions"` for a direct review of
-the current worktree. Continue a saved non-interactive task with
+the current worktree. Use `codex resume <session-id>` for an interactive TUI
+resume, or continue a saved non-interactive task with
 `codex exec resume <session-id> --dangerously-bypass-approvals-and-sandbox "follow-up"`.
+Use `codex apply` only when the explicit task is to apply the latest agent diff;
+inspect the diff and worktree before applying it.
 
 See [references/cli-reference.md](references/cli-reference.md) for the local
 help-derived command reference and prompt template.

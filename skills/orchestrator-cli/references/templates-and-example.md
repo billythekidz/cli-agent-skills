@@ -50,7 +50,10 @@ Control plane: `github` | `local-markdown`
 - Dispatch ID: `issue-<number>-attempt-<n>`
 - Native session: `new` | `resume <provider>/<exact ID>`
 - Process state: `active` | `stopped` | `unavailable`
+- Execution mode: `headless-one-shot` | `headless-live` | `interactive-live` | `unavailable`
 - Live transport: `stdin JSONL` | `app-server stdio` | `original interactive PTY` | `unavailable`
+- Headless transport: `stdout/stderr pipes` | `one-shot` | `unavailable`
+- Headless live transport: `stdin JSONL` | `app-server stdio` | `unavailable`
 - Current turn: `<turn ID>` | `awaiting result` | `queued` | `idle` | `unavailable`
 - Worktree / branch: <absolute path and branch>
 - May change: <exclusive paths>
@@ -72,11 +75,30 @@ control plane directly.
 Use exactly one route below for a task whose original process is still alive.
 These are transport instructions, not substitutes for the recorded native ID.
 
+## Default Headless Dispatch
+
+Use these commands first for independent tasks and dependency-gate handoffs:
+
+| Provider | Command | Execution mode | Transport |
+| --- | --- | --- | --- |
+| Claude | `claude -p --output-format json ...` | `headless-one-shot` | stdout/stderr pipes |
+| Codex | `codex exec --json ...` | `headless-one-shot` | stdout/stderr pipes |
+| Antigravity | `agy -p --output-format json ...` | `headless-one-shot` | stdout/stderr pipes |
+
+Use Claude stream-json stdin or Codex app-server only when a same-process
+follow-up is required. Use interactive-live/PTY only for an explicit UI
+workflow; it is not the default worker route.
+
+An Antigravity print run is different: `-p/--print` with `json` or
+`stream-json` uses stdout/stderr pipes and exits after one prompt. It has no
+same-process follow-up route; after exit, resume the exact conversation ID in a
+new process.
+
 | Provider | Record before sending | Send | Record after sending |
 | --- | --- | --- | --- |
 | Claude | process handle, `stdin JSONL`, `awaiting result` | enqueue one JSON user message; write it after `result` | `awaiting result` for the new turn |
 | Codex | app-server handle, `threadId`, active `turnId` | `turn/steer` with `expectedTurnId` | steer accepted, or `queued` if not steerable |
-| Antigravity | original PTY/process handle, `processing` | type prompt plus Enter into that PTY | `queued` until the UI finishes it |
+| Antigravity interactive | original terminal/PTY/process handle, `processing` | type prompt plus Enter into that same terminal/PTY | `queued` until the UI finishes it |
 
 Example live state before a Codex injection:
 
@@ -117,7 +139,10 @@ Mode: assign | handoff
 Workspace: <absolute dedicated worktree>
 Native session: new | resume <provider>/<exact ID>; do not use a latest-session flag
 Process state: active | stopped | unavailable
+Execution mode: headless-one-shot | headless-live | interactive-live | unavailable
+Headless transport: stdout/stderr pipes | one-shot | unavailable
 Live transport: stdin JSONL | app-server stdio | original interactive PTY | unavailable
+Headless live transport: stdin JSONL | app-server stdio | unavailable
 Current turn: <turn ID> | awaiting result | queued | idle | unavailable
 Objective: <one outcome>
 Own: <paths>

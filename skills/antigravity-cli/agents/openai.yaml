@@ -1,4 +1,4 @@
 interface:
   display_name: "Antigravity CLI"
-  short_description: "Drive live and resumed Antigravity sessions"
-  default_prompt: "Use $antigravity-cli to drive one live interactive agy process or resume its native conversation without CAO."
+  short_description: "Run or resume native Antigravity sessions"
+  default_prompt: "Use $antigravity-cli to choose headless structured output or live interactive agy delivery, then preserve the exact native conversation without CAO."

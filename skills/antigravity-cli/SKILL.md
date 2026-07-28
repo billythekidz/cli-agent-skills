@@ -1,6 +1,6 @@
 ---
 name: antigravity-cli
-description: "Delegate a bounded coding, analysis, review, or implementation task directly to the local Google Antigravity CLI (`agy`) without CAO or cao-server. Use to run one-shot work, drive one live interactive PTY with queued prompts, preserve and resume an exact native conversation ID, and verify the result."
+description: "Delegate a bounded coding, analysis, review, or implementation task directly to the local Google Antigravity CLI (`agy`) without CAO or cao-server. Choose headless text/JSON/stream output or same-process interactive delivery, preserve and resume an exact native conversation ID, and verify the result."
 ---
 
 # Direct Antigravity CLI Delegation
@@ -42,6 +42,18 @@ fix, run the named test, and report changed files plus the verification result.
 & $agy -p $prompt --mode accept-edits --dangerously-skip-permissions --print-timeout 15m
 ```
 
+   For unattended machine-readable output, use `--output-format json` for one
+   result or `--output-format stream-json` for events. Add `--json-schema` when
+   the result must satisfy a schema; in `stream-json` mode the schema applies
+   only to the final result. These print-mode commands use ordinary stdout and
+   stderr pipes and do not need a PTY:
+
+```powershell
+$schemaPath = 'D:\path\to\result.schema.json'
+& $agy --print $prompt --output-format stream-json --json-schema $schemaPath `
+  --mode accept-edits --dangerously-skip-permissions --print-timeout 15m
+```
+
 4. Capture the native conversation ID. Current `agy -p` versions can finish
 without printing it. After the process exits, its native cache at
 `~/.gemini/antigravity-cli/cache/last_conversations.json` maps absolute
@@ -62,6 +74,9 @@ yourself. Do not accept an unverified claim that tests passed.
   Antigravity tool permission requests for the invocation.
 - Use `--sandbox` or `--mode plan` only when a task explicitly requests a safer
   override.
+- Prefer `--add-dir <path>` for an explicit workspace boundary and
+  `--print-timeout <duration>` for bounded automation. Use `--effort`,
+  `--model`, or `--agent` only when the caller has selected a valid local value.
 - Do not run two writing agents against the same worktree. Use separate
   worktrees or run them sequentially.
 - Pass `--agent <name>` only after checking the locally available names with
@@ -76,9 +91,13 @@ conversation, rather than recover it after process exit. On Windows PowerShell:
 & $agy --sandbox -i "initial prompt"
 ```
 
-- Retain that original terminal/PTY and process handle. Send each follow-up to
+- If a human launches `-i` from an attached PowerShell console, that inherited
+  console is enough. If an external supervisor must drive the interactive UI,
+  retain that original terminal/PTY and process handle; send each follow-up to
   the same PTY followed by carriage return (`CR`, the Enter key). Antigravity's
   interactive UI can queue prompt lines while a turn is running.
+- Do not allocate a PTY for `-p/--print`, `--output-format json`, or
+  `--output-format stream-json`; capture stdout and stderr as pipes instead.
 - Serialize writes through one owner. Do not assume an injected line interrupts
   the current turn, and wait for the transcript or completed turn when order
   matters.

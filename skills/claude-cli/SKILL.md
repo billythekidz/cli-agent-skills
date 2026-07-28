@@ -1,6 +1,6 @@
 ---
 name: claude-cli
-description: "Delegate a bounded coding, analysis, review, or implementation task directly to the local Claude Code CLI (`claude`) without CAO or cao-server. Use to drive a live multi-prompt Claude process, preserve and resume an exact native session ID, and verify the result."
+description: "Delegate a bounded coding, analysis, review, or implementation task directly to the local Claude Code CLI (`claude`) without CAO or cao-server. Choose efficient print, structured-stream, review, or live JSONL delivery, preserve and resume an exact native session ID, and verify the result."
 ---
 
 # Direct Claude CLI Delegation
@@ -25,8 +25,10 @@ expected outcome, allowed files, constraints, and a verification command. Ask it
 to inspect first when the task is ambiguous or risky.
 
 3. Use `--print` with the configured permission bypass for every direct
-delegation. Do not add `--no-session-persistence` when the task may need a
-follow-up:
+   delegation. Use `--output-format json` for one machine-readable result and
+   add `--json-schema <schema>` when the caller needs validated structured
+   output. Do not add `--no-session-persistence` when the task may need a
+   follow-up:
 
 ```powershell
 $prompt = @'
@@ -53,6 +55,15 @@ Do not accept an unverified claim that tests passed.
 - Use `--permission-mode plan` or `--permission-mode acceptEdits` only when a
   task explicitly requests a safer override. Do not combine either mode with
   `--dangerously-skip-permissions`.
+- Prefer `--add-dir <path>` for an explicitly shared workspace boundary, and
+  use `--max-budget-usd <amount>` when the task needs a hard print-mode spend
+  cap.
+- Use `--fallback-model <model>` only for print-mode availability fallback. Load
+  `--mcp-config`, `--chrome`, or other external integrations only when the task
+  actually needs them.
+- `-p/--print` with `json` or `stream-json` uses ordinary stdin/stdout/stderr
+  pipes; it does not need a PTY. Reserve a console/PTY for the human
+  interactive `claude [prompt]` UI.
 - Do not run two writing agents against the same worktree. Use separate
   worktrees or run them sequentially.
 - If Claude Code reports a nested-session problem, use a separate shell or a
@@ -73,6 +84,8 @@ claude -p --input-format stream-json --output-format stream-json \
 
 - Keep the original process and its stdin open. Send UTF-8 JSON lines without a
   BOM; its initial `system/init` event provides the native session ID.
+- Keep stdin, stdout, and stderr as ordinary pipes. A PTY is not required for
+  this stream-json process and can make JSONL capture less reliable.
 - Treat each `result` event as the completed-turn boundary. Use one writer and
   a FIFO; do not assume a later input interrupts or runs in parallel with an
   in-flight turn.

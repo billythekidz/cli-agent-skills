@@ -100,6 +100,25 @@ class NativeSessionContractTests(unittest.TestCase):
             "--ephemeral",
         )
 
+    def test_codex_documents_current_root_command_selection(self) -> None:
+        text = (
+            read("skills/codex-cli/SKILL.md")
+            + read("skills/codex-cli/references/cli-reference.md")
+        )
+        self.assert_mentions(
+            text,
+            "codex --help",
+            "codex exec",
+            "codex review",
+            "codex app-server",
+            "codex doctor",
+            "--cd <workspace>",
+            "--add-dir <path>",
+            "--ask-for-approval",
+            "--search",
+            "remote-control",
+        )
+
     def test_antigravity_uses_an_exact_resumable_conversation(self) -> None:
         text = (
             read("skills/antigravity-cli/SKILL.md")
@@ -185,6 +204,19 @@ class LiveProcessContractTests(unittest.TestCase):
             "ALPHA-42",
         )
 
+    def test_claude_documents_pipe_based_structured_output(self) -> None:
+        text = (
+            read("skills/claude-cli/SKILL.md")
+            + read("skills/claude-cli/references/cli-reference.md")
+        )
+        self.assert_mentions(
+            text,
+            "--output-format json",
+            "--json-schema <schema>",
+            "ordinary stdin/stdout/stderr pipes",
+            "no PTY is required",
+        )
+
     def test_codex_documents_live_steering_separately_from_exec_resume(self) -> None:
         text = (
             read("skills/codex-cli/SKILL.md")
@@ -220,6 +252,22 @@ class LiveProcessContractTests(unittest.TestCase):
             "SECOND-PTY-MARKER",
         )
 
+    def test_antigravity_documents_pipe_based_print_mode(self) -> None:
+        text = (
+            read("skills/antigravity-cli/SKILL.md")
+            + read("skills/antigravity-cli/references/cli-reference.md")
+        )
+        self.assert_mentions(
+            text,
+            "--output-format json",
+            "--output-format stream-json",
+            "--json-schema",
+            "final result",
+            "stdout/stderr pipes",
+            "Print mode is one-shot",
+            "no PTY is required",
+        )
+
     def test_orchestrator_records_live_transport_without_confusing_it_for_identity(self) -> None:
         text = (
             read("skills/orchestrator-cli/SKILL.md")
@@ -230,12 +278,32 @@ class LiveProcessContractTests(unittest.TestCase):
             text,
             "Process state: active | stopped | unavailable",
             "Live transport: stdin JSONL | app-server stdio | original interactive PTY | unavailable",
+            "Headless transport: stdout/stderr pipes | one-shot | unavailable",
             "Current turn: <turn ID> | awaiting result | idle | unavailable",
             "turn/steer",
             "original interactive PTY",
             "operational routing data, not the provider-native session ID",
             "Active Follow-up Examples",
             "Action: turn/steer expectedTurnId=turn-456",
+        )
+
+    def test_orchestrator_prioritizes_headless_dispatch(self) -> None:
+        text = (
+            read("skills/orchestrator-cli/SKILL.md")
+            + read("skills/orchestrator-cli/references/dispatch-protocol.md")
+            + read("skills/orchestrator-cli/references/templates-and-example.md")
+        )
+        self.assert_mentions(
+            text,
+            "Delegate bounded work headlessly by default",
+            "headless-one-shot",
+            "headless-live",
+            "interactive-live",
+            "claude -p --output-format json",
+            "codex exec --json",
+            "agy -p --output-format json",
+            "Prefer a headless one-shot command",
+            "Never allocate a PTY for the default headless route",
         )
 
     def test_live_probe_is_opt_in_isolates_codex_home_and_handles_windows_shims(self) -> None:

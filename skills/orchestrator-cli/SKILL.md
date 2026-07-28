@@ -7,9 +7,9 @@ description: "Coordinate parallel and sequential engineering work directly throu
 
 Use GitHub Issues as the control plane when `gh` can read the target repository.
 When GitHub is unavailable, use `.orchestrator/` Markdown records in the target
-repository instead. Delegate bounded work directly through `claude`,
-`codex exec`, and `agy`; do not start `cao-server`, call CAO, or use CAO
-handoff tools.
+repository instead. Delegate bounded work headlessly by default through
+`claude -p`, `codex exec`, and `agy -p`; do not start `cao-server`, call CAO, or
+use CAO handoff tools.
 
 ## Operating Boundaries
 
@@ -63,7 +63,10 @@ Native session: <exact provider ID> | unavailable
 Workspace/worktree: <absolute path>
 Agent/model/profile: <selected value or default>
 Process state: active | stopped | unavailable
+Execution mode: headless-one-shot | headless-live | interactive-live | unavailable
 Live transport: stdin JSONL | app-server stdio | original interactive PTY | unavailable
+Headless transport: stdout/stderr pipes | one-shot | unavailable
+Headless live transport: stdin JSONL | app-server stdio | unavailable
 Current turn: <turn ID> | awaiting result | idle | unavailable
 Session action: new | resumed
 ```
@@ -71,15 +74,33 @@ Session action: new | resumed
 - Capture the ID after initial launch and include it in the reviewed handoff.
   Never substitute the dispatch ID, issue number, local task ID, or process
   handle.
+- Prefer `headless-one-shot` for every independent `assign` and blocking
+  `handoff`: Claude `-p --output-format json`, Codex `exec --json`, or
+  Antigravity `-p --output-format json`/`stream-json`. Capture stdout/stderr,
+  inspect the result, and let the process exit before writing the handoff.
+- Use `headless-live` only when a follow-up must arrive before process exit:
+  Claude `-p --input-format stream-json --output-format stream-json` or Codex
+  `app-server` JSONL. These are still pipe-based and do not need a PTY.
+- Use `interactive-live` only when the user requests a native UI or the
+  provider has no suitable headless-live route. Antigravity `-i` and Codex TUI
+  use the original console; an external controller needs a PTY only for that
+  interactive UI. Never allocate a PTY for the default headless route.
 - A process handle, PTY, and live transport are operational routes, not native
   session identity. Retain both the route and the native ID while a process is
   active.
 - For an active task, inject the follow-up through its recorded live transport:
   Claude's `stdin JSONL` stream waits for a `result` boundary; Codex app-server
   gets its exact active turn ID from `turn/started`, then uses `turn/steer`, or queues a later
-  `turn/start`; Antigravity writes the prompt plus Enter to its original
-  interactive PTY. Use one writer per transport and record whether a prompt is
-  queued or has completed.
+  `turn/start`; Antigravity interactive mode writes the prompt plus Enter to its
+  original terminal/PTY. Use one writer per transport and record whether a
+  prompt is queued or has completed.
+- Antigravity `-p/--print` with `--output-format json` or `stream-json` is a
+  pipe-based, one-shot run. It does not accept a later prompt in the same
+  process; capture stdout/stderr and use exact `agy --conversation <id>` only
+  after the process exits. A PTY is not required for this headless route.
+- Antigravity `-i/--prompt-interactive` needs the original attached console for
+  same-process follow-up. Allocate a PTY only when an external supervisor must
+  drive that console; do not allocate one for print-mode JSON capture.
 - Only after the original process is stopped or its live transport is lost,
   route a follow-up through the matching direct CLI skill using that exact ID:
   `claude -r <id>`, `codex exec resume <id>`, or
@@ -189,10 +210,12 @@ changing local task records.
    evidence-only work to a faster tier.
 6. **Dispatch**: Mark independent tasks as `assign` and launch them in parallel
    only after preflight passes. Mark dependency gates as `handoff`; wait for
-   their structured results before the next task. Give every worker the task
-   record, dispatch ID, absolute worktree, allowed paths, prohibited paths,
-   verification command, native-session action, process/transport state, and
-   required handoff fields.
+   their structured results before the next task. Prefer a headless one-shot
+   command for both modes; select headless-live only when same-process follow-up
+   is required, and interactive-live only as an explicit fallback. Give every
+   worker the task record, dispatch ID, absolute worktree, allowed paths,
+   prohibited paths, verification command, native-session action,
+   execution/transport state, and required handoff fields.
 7. **Track**: The supervisor reviews every worker result, then posts the
    handoff comment in GitHub mode or writes the matching handoff Markdown file
    in local mode. Record the native session envelope, mark blockers with
@@ -221,6 +244,8 @@ Mode: assign | handoff
 Workspace: <absolute, dedicated worktree>
 Native session: new, then return provider and exact native ID
 Process state: active | stopped
+Execution mode: headless-one-shot | headless-live | interactive-live
+Headless transport: <route or unavailable>
 Live transport: <route or unavailable>
 Current turn: <turn ID, result boundary, queued prompt, or unavailable>
 Objective: <one observable outcome>
@@ -233,8 +258,9 @@ blockers, and a proposed handoff record. Do not change the control plane.
 ```
 
 For direct execution, follow the corresponding `claude-cli`, `codex-cli`, or
-`antigravity-cli` skill. Their default unattended flags are intentionally
-dangerous; keep the task one record wide and inspect the result before the next
+`antigravity-cli` skill. Select its headless command first and record the
+execution mode. Their default unattended flags are intentionally dangerous;
+keep the task one record wide and inspect the result before the next
 control-plane update.
 
 For `assign`, capture the process handle and raw output in a temporary result

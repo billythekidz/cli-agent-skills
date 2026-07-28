@@ -1,20 +1,26 @@
 # Antigravity CLI Reference
 
-Verified from local `agy --help`, `agy help`, and `agy agent --help` on
-2026-07-14. Run the relevant help command again when the installed CLI version
-changes.
+Verified from the local `agy -h` help capture, `agy help`, and `agy agent
+--help` on 2026-07-28. Run the relevant help command again when the installed
+CLI version changes.
 
 ## Direct Delegation Commands
 
 | Need | Command or flag |
 | --- | --- |
+| Inspect the installed CLI | `agy --help` or `agy -h` |
 | Interactive session | `agy` |
 | Initial interactive prompt | `agy -i "prompt"` |
 | Live multi-prompt interactive process (Windows) | `& $agy --sandbox -i "initial prompt"` |
 | Default headless single task | `agy -p "prompt" --mode accept-edits --dangerously-skip-permissions` |
+| Structured single result | `agy -p "prompt" --output-format json ...` |
+| Streamed events and final result | `agy -p "prompt" --output-format stream-json ...` |
+| Constrain the final structured result | `--json-schema <schema string or path>` |
 | Resume exact conversation after process exit | `agy --conversation <id> -p "follow-up" --mode accept-edits --dangerously-skip-permissions` |
 | Continue latest conversation (exception only) | `agy -c -p "follow-up" --mode accept-edits --dangerously-skip-permissions` |
+| Start a new project context | `--new-project` or `--project <id>` |
 | Explicit safer override | `--mode plan` or `--sandbox` |
+| Select reasoning effort | `--effort low|medium|high` |
 | Choose an agent | `--agent <name>` |
 | Choose a model | `--model <model>` |
 | Add a workspace | `--add-dir <path>` |
@@ -23,8 +29,42 @@ changes.
 | Save diagnostics | `--log-file <path>` |
 
 Root help also lists `agent`, `agents`, `changelog`, `install`, `models`,
-`plugin`, and `update` subcommands. Prefer `agy plugin help` for plugin command
-discovery; some plugin subcommands interpret `--help` as an argument.
+`plugin`, `plugins`, and `update` subcommands. Prefer `agy plugin help` for
+plugin command discovery; some plugin subcommands interpret `--help` as an
+argument.
+
+## Command Selection
+
+| Requirement | Preferred command | Why |
+| --- | --- | --- |
+| One bounded worker task | `agy -p ... --output-format json` | One machine-readable result and ordinary pipe capture |
+| Progress/events plus final result | `agy -p ... --output-format stream-json` | Stream events without a PTY |
+| Schema-constrained final result | `agy -p ... --output-format stream-json --json-schema <schema>` | Structured final-result contract |
+| Same-process interactive follow-up | `agy -i ...` | The native UI can queue input in the original console |
+| Post-exit exact continuation | `agy --conversation <id> -p ...` | Creates a new process with the recorded native conversation |
+| Agent/model discovery | `agy agent` / `agy models` | Confirm local names before passing `--agent` or `--model` |
+| Plugin or installation lifecycle | `agy plugin ...` / `agy install` | Explicit environment operations, not worker delegation |
+
+## Print Mode And Structured Output
+
+`-p/--print` runs one prompt and exits. Use ordinary stdout/stderr pipes; no PTY
+is required for these forms:
+
+```powershell
+& $agy --print $prompt --output-format json `
+  --mode accept-edits --dangerously-skip-permissions --print-timeout 15m
+
+& $agy --print $prompt --output-format stream-json `
+  --json-schema 'D:\path\to\result.schema.json' `
+  --mode accept-edits --dangerously-skip-permissions --print-timeout 15m
+```
+
+Use `json` when the caller needs one machine-readable result and
+`stream-json` when it needs progress/events. `--json-schema` accepts a schema
+string or a schema-file path. For `stream-json`, it validates/enforces only the
+final result, not every event. Print mode is one-shot: it cannot accept a later
+prompt through the same process. After exit, recover with the exact
+`--conversation <id>` command if a follow-up is needed.
 
 ## Live Interactive Prompt Delivery
 
@@ -36,6 +76,10 @@ $agy = Get-Command agy -CommandType Application | Select-Object -First 1 -Expand
 if (-not $agy) { throw "agy application was not found on PATH." }
 & $agy --sandbox -i "initial prompt"
 ```
+
+When a human starts this from an attached PowerShell console, the inherited
+console is sufficient. An external supervisor needs a PTY only when it must
+drive that interactive console programmatically.
 
 Keep that original process and terminal/PTY alive. Write each follow-up prompt
 to the same PTY and terminate it with carriage return (`CR`, the Enter key).

@@ -61,7 +61,10 @@ Timeout: `<duration or policy>`
 Native session: `pending capture` | `provider / exact ID`
 Session action: `new` | `resumed`
 Process state: `active` | `stopped` | `unavailable`
+Execution mode: `headless-one-shot` | `headless-live` | `interactive-live` | `unavailable`
 Live transport: `stdin JSONL` | `app-server stdio` | `original interactive PTY` | `unavailable`
+Headless transport: `stdout/stderr pipes` | `one-shot` | `unavailable`
+Headless live transport: `stdin JSONL` | `app-server stdio` | `unavailable`
 Current turn: `<turn ID>` | `awaiting result` | `queued` | `idle` | `unavailable`
 State: `dispatched`
 ```
@@ -71,8 +74,24 @@ worker's return must name the same dispatch ID; otherwise treat it as misrouted
 and do not attach it to the task record. After launch, update the record with
 the exact provider-native ID from the worker result, or `unavailable` when the
 CLI did not report a stable ID. While the worker remains active, update the
-same record with its transport and current-turn state before accepting another
-prompt.
+same record with its execution mode, transport, and current-turn state before
+accepting another prompt.
+
+## Headless-First Dispatch
+
+Use headless one-shot execution as the default for `assign` and `handoff`:
+
+| Provider | Default command | Record as |
+| --- | --- | --- |
+| Claude | `claude -p --output-format json ...` | `headless-one-shot`, stdout/stderr pipes |
+| Codex | `codex exec --json ...` | `headless-one-shot`, stdout/stderr pipes |
+| Antigravity | `agy -p --output-format json ...` or `stream-json` | `headless-one-shot`, stdout/stderr pipes |
+
+Select a headless-live route only when the supervisor must send another prompt
+before the process exits: Claude stream-json stdin or Codex app-server stdio.
+Select interactive-live only for a requested/native UI workflow; use the
+original console or an externally controlled PTY for that UI. Do not create a
+PTY for a default headless worker.
 
 ## Parallel Fan-Out
 
@@ -106,7 +125,7 @@ command and result, evidence, blockers, and next owner.
 | `misrouted-handoff` | Record the received ID, keep it out of the target issue, and locate or re-request the correct handoff. |
 | `native-session-unavailable` | Record that no stable provider ID was returned. A later follow-up starts a new session with a factual handoff. |
 | `native-resume-failed` | Record the exact resume command and error. Do not fall back to a "latest" session; start a labeled new session only after preserving the prior evidence. |
-| `live-transport-unavailable` | Record that the original process/PTY/stdio route is unavailable. Do not start a second live worker; wait for or deliberately stop the original process, then use exact native recovery if needed. |
+| `live-transport-unavailable` | Record that the original process/PTY/stdio route is unavailable. Do not start a second live worker; wait for or deliberately stop the original process, then use exact native recovery if needed. A completed Antigravity print process is not a live-transport failure; use its exact native conversation ID for recovery. |
 
 Never replace a failed attempt's evidence. A retry gets a new attempt number
 and a durable record explaining what changed: input, scope, CLI/model tier,
@@ -117,10 +136,11 @@ worker is stopped or isolated.
 For an active task with a retained route, use that route instead: Claude
 receives a JSONL user message on its original stdin; Codex app-server records
 the active turn ID from `turn/started`, then receives `turn/steer` with that
-`expectedTurnId` (or a queued `turn/start` after
-completion); Antigravity receives prompt text plus Enter on its original
-interactive PTY. The handle and transport are operational routing data, not
-the provider-native session ID.
+`expectedTurnId` (or a queued `turn/start` after completion); Antigravity
+interactive mode receives prompt text plus Enter on its original terminal/PTY.
+Antigravity print mode uses stdout/stderr pipes only for its one-shot result and
+has no same-process follow-up route. The handle and transport are operational
+routing data, not the provider-native session ID.
 
 For a stopped task, an attempt may resume its own exact provider-native session.
 That does not reuse a dispatch ID: link the new attempt to the prior one and
