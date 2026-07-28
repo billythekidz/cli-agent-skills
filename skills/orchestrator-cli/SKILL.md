@@ -309,13 +309,15 @@ changing local task records.
 4. **Split**: Make each child issue or `TASK-<number>.md` independently
    actionable. Record its parent, inputs, blocked-by tasks, output,
    verification, owner CLI, model tier, and exclusive file scope.
-5. **Route**: Select a CLI and model tier from
-   [references/cli-model-routing.md](references/cli-model-routing.md). Route
-   hard design decisions to a strong reasoning tier; route mechanical,
-   evidence-only work to a faster tier. For the standard implement-then-review
-   loop, default the developer to `antigravity-cli` / `gemini-3.6-flash-high`
-   and the reviewer to `antigravity-cli` / `claude-sonnet-4-6`; see the default
-   pairing section in that reference.
+5. **Route**: Classify the task as coding/development, review, or planning and
+   select the ordered fallback chain from
+   [references/cli-model-routing.md](references/cli-model-routing.md). Probe
+   availability before dispatch. Only models in the classified task's chain are
+   permitted; do not route to any other model or tier. If the model is out of
+   quota, rate-limited, overloaded, or the CLI cannot start/continue, record its
+   exact CLI/model, native-session state, error, and fallback reason, then create
+   a new attempt with the next route and a factual handoff; never silently
+   downgrade or double-dispatch an active task.
 6. **Dispatch**: Mark independent tasks as `assign` and launch them in parallel
    only after preflight passes. Mark dependency gates as `handoff`; wait for
    their structured results before the next task. Prefer a headless one-shot
@@ -363,6 +365,10 @@ Execution mode: headless-one-shot | headless-live | interactive-live
 Headless transport: <route or unavailable>
 Live transport: <route or unavailable>
 Current turn: <turn ID, result boundary, queued prompt, or unavailable>
+Task type: coding | review | plan
+Fallback chain: <ordered CLI/model routes>
+Selected CLI/model: <route used for this attempt>
+Previous fallback attempts: <none or recorded attempt summaries>
 Objective: <one observable outcome>
 Own: <allowed paths>
 Do not change: <paths and external state>
@@ -415,8 +421,9 @@ indefinitely or to silently re-enable a failing integration.
   its task/handoff file. Commit the initial index before parallel workers need
   it, following the repository's normal commit policy.
 - A blocked record must state blocker, evidence, impact, decision owner, and
-  smallest next action. Do not silently retry a failed task with a different
-  model or CLI.
+  smallest next action. The routing fallback chain is an explicit exception to
+  the normal no-silent-retry rule: use it only after recording the failed
+  attempt's CLI/model, native-session state, exact error, and reason.
 - Distinguish `dispatch-failed`, `worker-error`, `timeout`, and `no-handoff`.
   Preserve previous evidence; create a new attempt ID only after recording why
   a retry is justified.

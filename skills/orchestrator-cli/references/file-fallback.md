@@ -52,9 +52,9 @@ actual GitHub failure so a later reconciliation has evidence.
 - [ ] <verification command>
 
 ## Task Ledger
-| Task | Dispatch | Mode | CLI / tier | Owns | Depends on | State |
+| Task | Dispatch | Mode | Task type / CLI / model | Owns | Depends on | State |
 | --- | --- | --- | --- | --- | --- | --- |
-| TASK-001 | not dispatched | assign | codex-cli / balanced | `<paths>` | none | ready |
+| TASK-001 | not dispatched | assign | coding / antigravity-cli / gemini-3.6-flash-high | `<paths>` | none | ready |
 
 ## Append-Only Events
 - `<timestamp>` Initialized local fallback because `<failure>`.

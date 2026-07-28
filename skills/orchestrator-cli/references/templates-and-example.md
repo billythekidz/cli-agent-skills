@@ -21,7 +21,7 @@ Use this as a parent Issue body in GitHub mode or as the plan section of
 - Out of scope: <paths, services, or behavior>
 
 ## Coordination
-- Integration owner: <CLI and model tier>
+- Integration owner: <task type and permitted CLI/model>
 - Parent branch/worktree: <location>
 - Child tasks:
   - [ ] #<number> | TASK-<number> <title>
@@ -45,7 +45,9 @@ Control plane: `github` | `local-markdown`
 - Read: <commits, docs, or paths>
 
 ## Ownership
-- CLI / model tier: <for example: codex-cli / balanced>
+- Task type: `coding` | `review` | `plan`
+- Fallback chain: <exact chain from cli-model-routing.md>
+- CLI / model: <one permitted pair for this task type>
 - Mode: `assign` | `handoff`
 - Dispatch ID: `issue-<number>-attempt-<n>`
 - Native session: `new` | `resume <provider>/<exact ID>`
@@ -128,11 +130,11 @@ local Markdown mode. Update it only after a reviewed handoff; child handoffs
 remain the detailed event history.
 
 ```markdown
-| Record | Dispatch | Mode | CLI / tier | Native session | Live transport | Owns | Depends on | State |
+| Record | Dispatch | Mode | Task type / CLI / model | Native session | Live transport | Owns | Depends on | State |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| #121 / TASK-001 | `issue-121-attempt-1` | `assign` | claude-cli / balanced | pending capture | stdin JSONL / awaiting result | read-only | none | dispatched |
-| #122 / TASK-002 | `issue-122-attempt-1` | `assign` | codex-cli / balanced | pending capture | app-server stdio / active turn | `tests/webhook-retry.*` | none | dispatched |
-| #124 / TASK-004 | not dispatched | `handoff` | codex-cli / high | not started | unavailable | `src/webhooks/*` | #121, #122 | blocked |
+| #121 / TASK-001 | `issue-121-attempt-1` | `assign` | plan / claude-cli / opus | pending capture | stdin JSONL / awaiting result | read-only | none | dispatched |
+| #122 / TASK-002 | `issue-122-attempt-1` | `assign` | coding / antigravity-cli / gemini-3.6-flash-high | pending capture | app-server stdio / active turn | `tests/webhook-retry.*` | none | dispatched |
+| #124 / TASK-004 | not dispatched | `handoff` | coding / antigravity-cli / gemini-3.6-flash-high | not started | unavailable | `src/webhooks/*` | #121, #122 | blocked |
 ```
 
 ## Worker Prompt
@@ -205,7 +207,10 @@ Next owner: <CLI/model tier and one next action>
 
 ## Scope and suggested route
 - Suspected paths: <paths>
-- Suggested CLI/model tier: <route and why>
+- Task type: `coding` | `review` | `plan`
+- Fallback chain: <ordered CLI/model routes from cli-model-routing.md>
+- Selected CLI/model tier: <route and why>
+- Previous fallback attempts: <none or exact CLI/model, native-session state, error, and reason>
 ```
 
 ## Local Markdown Layout
@@ -233,11 +238,11 @@ issues:
 
 | Issue | Scope | Route | Dependency |
 | --- | --- | --- | --- |
-| `#121` Reproduce and map retry path | Read-only investigation; return logs and likely owner paths | `assign`: `claude-cli` with a balanced or high reasoning tier | None |
-| `#122` Define regression test | Only `tests/webhook-retry.*` | `assign`: `codex-cli` with a balanced tier | None |
-| `#123` Document metric and alert expectation | Only `docs/observability/*` | `assign`: `antigravity-cli` with a fast or medium tier | None |
-| `#124` Implement idempotency guard | Only `src/webhooks/*`; consume `#121` and merged `#122` | `handoff`: `antigravity-cli` with `gemini-3.6-flash-high` (developer) | `#121`, `#122` |
-| `#125` Integrate and verify | Integration worktree; no parallel writers | `handoff`: `antigravity-cli` with `claude-sonnet-4-6` (reviewer) | `#123`, `#124` |
+| `#121` Reproduce and map retry path | Read-only investigation; return logs and likely owner paths | `assign`: planning chain, first `claude-cli` with `opus` | None |
+| `#122` Define regression test | Only `tests/webhook-retry.*` | `assign`: coding chain, first `antigravity-cli` with `gemini-3.6-flash-high` | None |
+| `#123` Document metric and alert expectation | Only `docs/observability/*` | `assign`: review chain, first `antigravity-cli` with `claude-sonnet-4-6` | None |
+| `#124` Implement idempotency guard | Only `src/webhooks/*`; consume `#121` and merged `#122` | `handoff`: coding chain, first `antigravity-cli` with `gemini-3.6-flash-high` | `#121`, `#122` |
+| `#125` Integrate and verify | Integration worktree; no parallel writers | `handoff`: review chain, first `antigravity-cli` with `claude-sonnet-4-6` | `#123`, `#124` |
 
 1. Inspect existing issues and labels. Post the parent plan and dispatch ledger
    with the five linked tasks, their file boundaries, and attempt IDs.
@@ -273,5 +278,5 @@ second delivery without the queue adapter from #121.
 Evidence: retry path enters `src/webhooks/queue.ts` before the idempotency key
 is read.
 Blocker: #121 must confirm whether the queue adapter preserves event IDs.
-Next owner: `claude-cli` / high reasoning tier to inspect the adapter contract.
+Next owner: `claude-cli` / `opus` (planning chain) to inspect the adapter contract.
 ```

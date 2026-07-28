@@ -52,7 +52,9 @@ plus an `INDEX.md` event in local Markdown mode.
 ## Dispatch
 Dispatch: `issue-124-attempt-1`
 Mode: `assign`
-CLI/model: `codex-cli` / `high`
+Task type: `coding` | `review` | `plan`
+CLI/model: `<one permitted CLI/model pair from cli-model-routing.md>`
+Fallback chain: `<exact chain for the task type>`
 Worktree: `<absolute path>`
 Owns: `src/webhooks/*`
 Depends on: `#121`, `#122`

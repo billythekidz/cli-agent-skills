@@ -74,7 +74,9 @@ $dispatch = @'
 ## Dispatch
 Dispatch: `issue-123-attempt-1`
 Mode: `assign`
-CLI/model: `codex-cli` / `balanced`
+CLI/model: `antigravity-cli` / `gemini-3.6-flash-high`
+Task type: `coding`
+Fallback chain: `antigravity-cli / gemini-3.6-flash-high` -> `claude-cli / sonnet` -> `codex-cli / gpt-5.6-luna-medium` -> `claude-cli / haiku`
 Worktree: `<absolute path>`
 Owns: `<exclusive paths>`
 Depends on: `<issue numbers or none>`

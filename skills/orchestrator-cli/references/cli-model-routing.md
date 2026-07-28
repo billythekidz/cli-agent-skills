@@ -30,57 +30,69 @@ Reserve the final integration and verification for a single owner.
 | High or thinking | Multi-file diagnosis, difficult review, implementation with tricky invariants, and plan critique | High-volume clerical work where latency matters more than depth |
 | Flagship or frontier | Architecture, risky migrations, security-sensitive analysis, final integration review, and conflicts between prior agents | Routine issue administration or simple mechanical changes |
 
-## Known Model Families
+## Strict Model Allowlist
 
-These are routing examples, not an availability guarantee. Pass only model IDs
-or labels that the local CLI and account expose.
+The task-type table above is the complete allowlist. These are not examples.
+Once a task is classified, use only the models in that task's chain. Do not
+substitute another model family, tier, alias, or provider, even if it is
+available locally. If none of the listed routes is available, mark the task
+`blocked` with `invalid-route`/`model-unavailable` evidence and request a new
+routing decision; do not invent a fourth fallback.
 
-| CLI | Model or class | Route to |
-| --- | --- | --- |
-| Claude Code | `opus` class | Architecture, security or migration review, hard root-cause analysis, and final decision memos |
-| Claude Code | `sonnet` class | Bounded implementation, normal code review, test additions, and clear issue handoffs |
-| Claude Code | `fable` or another configured alias | Verify the provider's documented tier first; do not infer capability from an alias alone |
-| Codex CLI | `gpt-5.6` or `gpt-5.6-sol`, if available | Most difficult code changes, integration review, and quality-first reasoning |
-| Codex CLI | `gpt-5.6-terra`, if available | Balanced implementation and routine review |
-| Codex CLI | `gpt-5.6-luna`, if available | High-volume, well-specified triage, documentation, and mechanical checks |
-| Antigravity | `gemini-3.6-flash-low` / `gemini-3.5-flash-low` | Fast repository or issue inventory and concise evidence collection |
-| Antigravity | `gemini-3.6-flash-medium` / `gemini-3.5-flash-medium` | Bounded tests, documentation, and independent small changes |
-| Antigravity | `gemini-3.6-flash-high` / `gemini-3.5-flash-high` | Complex but isolated implementation or review |
-| Antigravity | `gemini-3.1-pro-low` | Fast plan decomposition and broad discovery when a lighter pass is enough |
-| Antigravity | `gemini-3.1-pro-high` | Multi-file diagnosis, plan review, and difficult implementation |
-| Antigravity | `claude-sonnet-4-6` | Bounded implementation, normal code review, and clear issue handoffs |
-| Antigravity | `claude-opus-4-6-thinking` | Architecture, high-risk review, and final synthesis |
-| Antigravity | `gpt-oss-120b-medium` | A bounded second opinion, tests, or a medium-complexity independent task; verify critical conclusions with a stronger owner |
+The currently permitted model labels are exactly:
 
-The Codex examples follow the OpenAI capability tiers documented in the
-[current model guide](https://developers.openai.com/api/docs/guides/latest-model.md).
-They do not guarantee that a particular Codex CLI account can select those
-models. The Antigravity IDs above were returned by `agy models` on 2026-07-22;
-refresh the list before relying on them.
+| Task type | Permitted CLI/model pairs |
+| --- | --- |
+| Coding or development | `antigravity-cli / gemini-3.6-flash-high`; `claude-cli / sonnet`; `codex-cli / gpt-5.6-luna-medium`; `claude-cli / haiku` |
+| Review | `antigravity-cli / claude-sonnet-4-6`; `claude-cli / opus`; `codex-cli / gpt-5.6-terra-high` |
+| Planning | `claude-cli / opus`; `codex-cli / gpt-5.6-sol-high`; `antigravity-cli / claude-sonnet-4-6` |
 
-## Default Developer / Reviewer Pairing
+The listed labels must still be checked against local account availability, but
+availability checks never authorize using a model outside this allowlist.
 
-For the standard implement-then-review loop, route both roles through the
-Antigravity CLI as two independent native conversations (each gets its own
-conversation ID):
+## Task-Type Fallback Order
 
-| Role | CLI | `--model` | Use for |
-| --- | --- | --- | --- |
-| Developer | `antigravity-cli` | `gemini-3.6-flash-high` | Implementation, tests, and bounded code changes in a dedicated worktree |
-| Reviewer | `antigravity-cli` | `claude-sonnet-4-6` | Reviewing the developer's diff, verifying acceptance checks, and approving the handoff |
+Classify the task before dispatch. The first available route is preferred; move
+to the next route only when the current route is unavailable or the attempt has
+failed. This explicitly includes model quota exhaustion, rate limits, provider
+overload/capacity errors, authentication/configuration failures that prevent
+launch, CLI-not-found errors, startup timeouts, and worker errors. Model labels
+below are the requested routing aliases; verify the exact IDs exposed by each
+local CLI before launch.
 
-The reviewer is a separate `agy` invocation, not the developer's session continued.
-Give it the developer's changed files, branch/commit, and verification command; it
-returns an approve / request-changes verdict. Fall back to the general tiers above
-only when a task is outside this standard loop (architecture, deep diagnosis, triage).
-Confirm both IDs with `agy models` before dispatch.
+| Task type | Priority order (CLI / model) |
+| --- | --- |
+| Coding or development | `antigravity-cli / gemini-3.6-flash-high` → `claude-cli / sonnet` → `codex-cli / gpt-5.6-luna-medium` → `claude-cli / haiku` |
+| Review | `antigravity-cli / claude-sonnet-4-6` → `claude-cli / opus` → `codex-cli / gpt-5.6-terra-high` |
+| Planning | `claude-cli / opus` → `codex-cli / gpt-5.6-sol-high` → `antigravity-cli / claude-sonnet-4-6` |
+
+For coding/development, use the first row for both implementation and bounded
+development work. For review, use a separate reviewer conversation with the
+developer's changed files, branch/commit, and verification command. For plan,
+prefer the stronger reasoning route even when no code will be changed.
+
+### Fallback protocol
+
+Before dispatch, run the provider's availability check (`agy models`,
+`claude --help`/configured model aliases, and `codex exec --help` or the local
+profile list). If a route cannot start, the model has no remaining quota, or it
+returns a classified capacity/rate-limit/provider/worker failure, record the
+attempted CLI/model, native-session state, exact error, and reason for fallback
+in the task record, then try the next entry. Do not skip entries silently,
+retry an active process in a second CLI, or use a provider's "latest"
+conversation selector. A fallback is a new attempt with a new dispatch ID; it
+must carry a factual handoff of the previous attempt's evidence.
+
+The reviewer is a separate invocation, not the developer's session continued.
+Confirm the selected model and native session ID before dispatch, and record the
+final selected route in the handoff.
 
 ## Prompt And Model Match
 
-- Give fast-tier agents evidence-gathering tasks with a fixed output schema.
-- Give balanced-tier agents one issue, one worktree, exact paths, and a test.
-- Give high-tier agents uncertainty, constraints, alternatives, and a request
+- Coding/development routes receive one issue, one worktree, exact paths, and a
+  verification command.
+- Review routes receive the changed files, branch/commit, acceptance checks, and
+  an approve/request-changes verdict.
+- Planning routes receive uncertainty, constraints, alternatives, and a request
   for explicit assumptions and evidence.
-- Give a flagship-tier integration owner the child handoffs, merged diff,
-  verification command, and authority boundary. Do not ask it to redo every
-  completed task without a specific conflict or gap.
+- Do not replace any of these routes with a different model tier or provider.
