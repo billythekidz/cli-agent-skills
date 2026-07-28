@@ -43,20 +43,37 @@ or labels that the local CLI and account expose.
 | Codex CLI | `gpt-5.6` or `gpt-5.6-sol`, if available | Most difficult code changes, integration review, and quality-first reasoning |
 | Codex CLI | `gpt-5.6-terra`, if available | Balanced implementation and routine review |
 | Codex CLI | `gpt-5.6-luna`, if available | High-volume, well-specified triage, documentation, and mechanical checks |
-| Antigravity | `Gemini 3.5 Flash (Low)` | Fast repository or issue inventory and concise evidence collection |
-| Antigravity | `Gemini 3.5 Flash (Medium)` | Bounded tests, documentation, and independent small changes |
-| Antigravity | `Gemini 3.5 Flash (High)` | Complex but isolated implementation or review |
-| Antigravity | `Gemini 3.1 Pro (Low)` | Fast plan decomposition and broad discovery when a lighter pass is enough |
-| Antigravity | `Gemini 3.1 Pro (High)` | Multi-file diagnosis, plan review, and difficult implementation |
-| Antigravity | `Claude Sonnet 4.6 (Thinking)` | Careful implementation planning and critical code review |
-| Antigravity | `Claude Opus 4.6 (Thinking)` | Architecture, high-risk review, and final synthesis |
-| Antigravity | `GPT-OSS 120B (Medium)` | A bounded second opinion, tests, or a medium-complexity independent task; verify critical conclusions with a stronger owner |
+| Antigravity | `gemini-3.6-flash-low` / `gemini-3.5-flash-low` | Fast repository or issue inventory and concise evidence collection |
+| Antigravity | `gemini-3.6-flash-medium` / `gemini-3.5-flash-medium` | Bounded tests, documentation, and independent small changes |
+| Antigravity | `gemini-3.6-flash-high` / `gemini-3.5-flash-high` | Complex but isolated implementation or review |
+| Antigravity | `gemini-3.1-pro-low` | Fast plan decomposition and broad discovery when a lighter pass is enough |
+| Antigravity | `gemini-3.1-pro-high` | Multi-file diagnosis, plan review, and difficult implementation |
+| Antigravity | `claude-sonnet-4-6` | Bounded implementation, normal code review, and clear issue handoffs |
+| Antigravity | `claude-opus-4-6-thinking` | Architecture, high-risk review, and final synthesis |
+| Antigravity | `gpt-oss-120b-medium` | A bounded second opinion, tests, or a medium-complexity independent task; verify critical conclusions with a stronger owner |
 
 The Codex examples follow the OpenAI capability tiers documented in the
 [current model guide](https://developers.openai.com/api/docs/guides/latest-model.md).
 They do not guarantee that a particular Codex CLI account can select those
-models. The Antigravity display names above were returned by `agy models` on
-2026-07-13; refresh the list before relying on them.
+models. The Antigravity IDs above were returned by `agy models` on 2026-07-22;
+refresh the list before relying on them.
+
+## Default Developer / Reviewer Pairing
+
+For the standard implement-then-review loop, route both roles through the
+Antigravity CLI as two independent native conversations (each gets its own
+conversation ID):
+
+| Role | CLI | `--model` | Use for |
+| --- | --- | --- | --- |
+| Developer | `antigravity-cli` | `gemini-3.6-flash-high` | Implementation, tests, and bounded code changes in a dedicated worktree |
+| Reviewer | `antigravity-cli` | `claude-sonnet-4-6` | Reviewing the developer's diff, verifying acceptance checks, and approving the handoff |
+
+The reviewer is a separate `agy` invocation, not the developer's session continued.
+Give it the developer's changed files, branch/commit, and verification command; it
+returns an approve / request-changes verdict. Fall back to the general tiers above
+only when a task is outside this standard loop (architecture, deep diagnosis, triage).
+Confirm both IDs with `agy models` before dispatch.
 
 ## Prompt And Model Match
 

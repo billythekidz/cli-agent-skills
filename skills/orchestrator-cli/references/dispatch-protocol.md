@@ -93,6 +93,36 @@ Select interactive-live only for a requested/native UI workflow; use the
 original console or an externally controlled PTY for that UI. Do not create a
 PTY for a default headless worker.
 
+When a task needs prompt injection into the same live process, start it through
+the bundled lightweight supervisor:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json start \
+  --dispatch-id task-TASK-12-attempt-1 \
+  --provider claude-cli \
+  --protocol claude-stream-json \
+  --workspace /absolute/worktree \
+  -- claude -p --input-format stream-json --output-format stream-json
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json send \
+  task-TASK-12-attempt-1 "Continue in the same live process."
+```
+
+The supervisor records process status in
+`.orchestrator/runtime/supervisor.sqlite3` and raw output in
+`.orchestrator/runtime/logs/*.jsonl`. Claude and Codex retain stdio/JSONL or
+app-server handles. Antigravity uses `antigravity-pty`: an isolated tmux PTY on
+macOS and a pywinpty/ConPTY PTY on Windows. If `status` shows
+`live_handle: false` for an active dispatch, or `send` returns
+`live-transport-unavailable`, do not start a second active process. Record the
+lost route, then wait, stop, or recover by exact provider-native session ID
+according to the task state.
+
+Before an Antigravity PTY dispatch, run the bundled `doctor`. Install missing
+host dependencies manually: `brew install tmux` on macOS, or
+`py -m pip install pywinpty` from Windows PowerShell. The supervisor never
+auto-installs either dependency.
+
 ## Parallel Fan-Out
 
 Run a batch only when all child issues are ready and every writer has a unique
@@ -121,6 +151,7 @@ command and result, evidence, blockers, and next owner.
 | `dispatch-failed` | Record the launch error. Do not claim the worker began. |
 | `worker-error` | Record exit/error evidence and preserve the worktree for inspection when useful. |
 | `timeout` | Record the timeout and process state. Do not assume the worker made no changes. |
+| `startup-blocked-by-integrations` | After 300 seconds of `Loading`/`connecting`, preserve log tails, stop the route, run `fresh-start-without-integrations.md`, and use a new dispatch only if the no-integration probe succeeds. |
 | `no-handoff` | Record that the process ended without the required payload; inspect output before retrying. |
 | `misrouted-handoff` | Record the received ID, keep it out of the target issue, and locate or re-request the correct handoff. |
 | `native-session-unavailable` | Record that no stable provider ID was returned. A later follow-up starts a new session with a factual handoff. |

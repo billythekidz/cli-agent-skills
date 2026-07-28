@@ -115,6 +115,104 @@ Session action: new | resumed
   start a new native session only with a factual handoff of the prior result.
   Mark the action `new`; never claim session continuity that did not occur.
 
+## Optional Live Process Supervisor
+
+For unattended local runs that need follow-up prompts injected into an already
+running process, use the bundled lightweight supervisor instead of CAO:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json doctor
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json start \
+  --dispatch-id task-TASK-12-attempt-1 \
+  --provider claude-cli \
+  --protocol claude-stream-json \
+  --workspace /absolute/worktree \
+  -- claude -p --input-format stream-json --output-format stream-json
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json send \
+  task-TASK-12-attempt-1 "Use the same live session and add this evidence."
+
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json status \
+  task-TASK-12-attempt-1
+```
+
+The supervisor is a single-machine localhost JSONL daemon started on demand. It
+stores durable records in `.orchestrator/runtime/supervisor.sqlite3` and raw
+process logs in `.orchestrator/runtime/logs/*.jsonl`. Claude and Codex remain
+on their protocol-native stdio transports. Antigravity's interactive PTY route
+uses an isolated tmux session on macOS or the optional pywinpty/ConPTY bridge
+on Windows; the supervisor still uses stdlib `subprocess`, `socket`, and
+`sqlite3` for its daemon, database, and JSONL control protocol.
+
+Use the supervisor only as the retained live route. The durable control plane is
+still GitHub Issues or `.orchestrator/` Markdown, and the provider-native
+session ID is still the provider's ID. A macOS tmux route can be reattached
+from its recorded socket after a supervisor restart; if reattachment fails, or
+the supervisor is not reachable, mark the route `live-transport-unavailable`.
+Do not claim prompt injection into a route that was not reattached.
+
+Supported prompt protocols:
+
+| Protocol | Use for | Injection shape |
+| --- | --- | --- |
+| `text` | Test workers or CLIs that accept plain stdin lines | `prompt + "\n"` |
+| `jsonl` | Generic JSONL workers | `{"type":"user","text":...}` |
+| `claude-stream-json` | One retained Claude stream-json process | JSONL user message |
+| `codex-app-server` | One retained Codex app-server process | `turn/steer` when current turn is known, otherwise `turn/start` |
+| `antigravity-pty` | One retained Antigravity interactive process | prompt text plus PTY Enter (`CR`) |
+
+### Antigravity PTY prerequisites
+
+The PTY backend is selected with `--protocol antigravity-pty`. Leave
+`--transport` as `stdio` (the default) for Claude and Codex. For Antigravity,
+`stdio` is automatically resolved to `auto`: macOS selects an isolated tmux
+session and Windows selects pywinpty/ConPTY.
+
+Check prerequisites before starting a live route:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json doctor
+```
+
+On macOS, the managed PTY requires tmux. If `doctor` reports it missing, install
+it with Homebrew and verify it:
+
+```bash
+brew install tmux
+tmux -V
+```
+
+On Windows PowerShell, install the optional Python PTY bridge if `doctor`
+reports it missing:
+
+```powershell
+py -m pip install pywinpty
+```
+
+Run `doctor` again after installation. The supervisor never auto-installs
+dependencies. If the selected backend is unavailable, start returns
+`live-transport-unavailable`; do not claim that a prompt entered Antigravity.
+The durable native conversation ID remains separate from the tmux session,
+Windows PTY handle, dispatch ID, and PID.
+
+Example Antigravity route:
+
+```bash
+python <orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py --json start \
+  --dispatch-id task-TASK-12-attempt-1 \
+  --provider antigravity-cli \
+  --protocol antigravity-pty \
+  --transport auto \
+  --workspace /absolute/worktree \
+  -- agy --sandbox -i "Inspect the failing test and wait for follow-up."
+```
+
+If the supervisor handle or PTY is lost, record
+`live-transport-unavailable`, stop or wait for the original process, then use
+the original terminal/PTY described in `antigravity-cli` or the exact
+`agy --conversation <id>` recovery route from that skill.
+
 ## Select The Control Plane
 
 If the user says the work must stay offline, enter local Markdown mode without
@@ -207,7 +305,10 @@ changing local task records.
 5. **Route**: Select a CLI and model tier from
    [references/cli-model-routing.md](references/cli-model-routing.md). Route
    hard design decisions to a strong reasoning tier; route mechanical,
-   evidence-only work to a faster tier.
+   evidence-only work to a faster tier. For the standard implement-then-review
+   loop, default the developer to `antigravity-cli` / `gemini-3.6-flash-high`
+   and the reviewer to `antigravity-cli` / `claude-sonnet-4-6`; see the default
+   pairing section in that reference.
 6. **Dispatch**: Mark independent tasks as `assign` and launch them in parallel
    only after preflight passes. Mark dependency gates as `handoff`; wait for
    their structured results before the next task. Prefer a headless one-shot
@@ -216,6 +317,10 @@ changing local task records.
    worker the task record, dispatch ID, absolute worktree, allowed paths,
    prohibited paths, verification command, native-session action,
    execution/transport state, and required handoff fields.
+   When follow-up injection may be needed, select headless-live first and launch
+   through `<orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py start`
+   when a managed process is required; record the runtime log path in the
+   dispatch record. Use interactive-live/PTY only as the explicit fallback.
 7. **Track**: The supervisor reviews every worker result, then posts the
    handoff comment in GitHub mode or writes the matching handoff Markdown file
    in local mode. Record the native session envelope, mark blockers with
@@ -232,6 +337,9 @@ launching a parallel worker or retrying one. Read
 [references/templates-and-example.md](references/templates-and-example.md) for
 copy-ready issue, local-record, handoff, bug-report, and worker-prompt
 templates plus a parallel-then-sequential example.
+
+Read [references/fresh-start-without-integrations.md](references/fresh-start-without-integrations.md)
+whenever provider startup reaches the 300-second timeout.
 
 ## Dispatch Contract
 
@@ -267,6 +375,23 @@ For `assign`, capture the process handle and raw output in a temporary result
 location owned by the supervisor. The handoff becomes durable only after the
 supervisor verifies it and writes the GitHub comment or local handoff file. For
 `handoff`, wait for the required fields before dispatching the dependent task.
+
+### 300-second startup timeout and fresh recovery
+
+Give a provider at most 300 seconds to reach its first usable prompt. If it is
+still `Loading`, `connecting`, or `Initializing`, classify the attempt as
+`timeout` / `startup-blocked-by-integrations`, preserve the supervisor and
+provider log tails, stop the process, and do not send another prompt through
+that route. Run
+[fresh-start-without-integrations.md](references/fresh-start-without-integrations.md)
+with an empty MCP/plugin configuration. Only after that probe succeeds may you
+create a new dispatch/native session with a factual handoff; never claim that
+the timed-out native session continued.
+
+The supervisor readiness wait is separately configurable with
+`ORCHESTRATOR_SUPERVISOR_CONNECT_TIMEOUT=300`. This changes daemon readiness,
+not the provider's own startup behavior. A timeout is not permission to retry
+indefinitely or to silently re-enable a failing integration.
 
 ## Status And Recovery
 

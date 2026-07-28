@@ -46,6 +46,16 @@ Do not add a state file to the target repository unless the user asks.
 5. Read the JSONL events, inspect the diff, and run the requested verification
 yourself. Do not accept an unverified claim that tests passed.
 
+## Startup Timeout Recovery
+
+Give startup at most 300 seconds. If Codex remains unavailable or is blocked by
+user config, MCP, or plugin initialization, stop that process and follow
+[orchestrator-cli's fresh-start procedure](../orchestrator-cli/references/fresh-start-without-integrations.md).
+The fresh Codex probe uses a disposable `CODEX_HOME`, `--ignore-user-config`,
+and `--ephemeral`; copy only the auth file when preserving the existing login
+is required. Start a new native session after the probe; do not imply that the
+timed-out session is resumable.
+
 ## Default Automation And Coordination
 
 - This skill defaults to `--dangerously-bypass-approvals-and-sandbox`. It skips
