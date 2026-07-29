@@ -318,6 +318,9 @@ changing local task records.
    exact CLI/model, native-session state, error, and fallback reason, then create
    a new attempt with the next route and a factual handoff; never silently
    downgrade or double-dispatch an active task.
+   The fallback cursor is task-scoped: after a task reaches `verified` or `done`,
+   reset it to the first route for the next task. A successful fallback must
+   never become a sticky provider/model default.
 6. **Dispatch**: Mark independent tasks as `assign` and launch them in parallel
    only after preflight passes. Mark dependency gates as `handoff`; wait for
    their structured results before the next task. Prefer a headless one-shot
@@ -367,6 +370,7 @@ Live transport: <route or unavailable>
 Current turn: <turn ID, result boundary, queued prompt, or unavailable>
 Task type: coding | review | plan
 Fallback chain: <ordered CLI/model routes>
+Fallback cursor: <1-based route position for this task>
 Selected CLI/model: <route used for this attempt>
 Previous fallback attempts: <none or recorded attempt summaries>
 Objective: <one observable outcome>

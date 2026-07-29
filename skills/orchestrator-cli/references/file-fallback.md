@@ -84,6 +84,7 @@ Dispatch: `task-TASK-001-attempt-1`
 
 ## Ownership
 - CLI / model tier: `<route>`
+- Fallback cursor: `1` for a new task; reset to `1` after the prior task is done
 - Worktree / branch: `<absolute path>` / `<branch>`
 - May change: `<exclusive paths>`
 - Must not change: `<excluded paths and external state>`

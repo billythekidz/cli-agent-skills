@@ -83,6 +83,16 @@ retry an active process in a second CLI, or use a provider's "latest"
 conversation selector. A fallback is a new attempt with a new dispatch ID; it
 must carry a factual handoff of the previous attempt's evidence.
 
+### Reset after a completed task
+
+The fallback cursor is scoped to one task only. A successful fallback does not
+change the preferred route for later work. After the task reaches `verified` or
+`done`, reset the cursor to position 1 and probe the first provider/model in the
+chain for the next task. If that first route is still unavailable, rate-limited,
+over quota, overloaded, or fails, walk the same chain from the beginning and
+record the new fallback attempts. Never make the last successful fallback a
+sticky default.
+
 The reviewer is a separate invocation, not the developer's session continued.
 Confirm the selected model and native session ID before dispatch, and record the
 final selected route in the handoff.

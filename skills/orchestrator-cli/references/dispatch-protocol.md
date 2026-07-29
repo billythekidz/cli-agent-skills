@@ -55,6 +55,7 @@ Mode: `assign`
 Task type: `coding` | `review` | `plan`
 CLI/model: `<one permitted CLI/model pair from cli-model-routing.md>`
 Fallback chain: `<exact chain for the task type>`
+Fallback cursor: `1` for a new task; advance only within this task's attempts
 Worktree: `<absolute path>`
 Owns: `src/webhooks/*`
 Depends on: `#121`, `#122`
@@ -187,6 +188,13 @@ and a durable record explaining what changed: input, scope, CLI/model tier,
 timeout, or environmental repair. Do not launch a second process for an active
 dispatch unless the user explicitly instructs a takeover and the original
 worker is stopped or isolated.
+
+When a task reaches `verified` or `done`, close its fallback sequence and reset
+the fallback cursor to `1`. The next task must probe the first route in its own
+task-type chain, even if the previous task completed successfully on a fallback
+provider. If the first route fails again, continue through that chain and record
+the new attempts; do not reuse the previous task's selected provider as a
+sticky default.
 
 For an active task with a retained route, use that route instead: Claude
 receives a JSONL user message on its original stdin; Codex app-server records

@@ -47,6 +47,7 @@ Control plane: `github` | `local-markdown`
 ## Ownership
 - Task type: `coding` | `review` | `plan`
 - Fallback chain: <exact chain from cli-model-routing.md>
+- Fallback cursor: `1` for a new task; advance only within this task
 - CLI / model: <one permitted pair for this task type>
 - Mode: `assign` | `handoff`
 - Dispatch ID: `issue-<number>-attempt-<n>`
