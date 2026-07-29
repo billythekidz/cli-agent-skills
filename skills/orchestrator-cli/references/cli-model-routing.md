@@ -43,7 +43,7 @@ The currently permitted model labels are exactly:
 
 | Task type | Permitted CLI/model pairs |
 | --- | --- |
-| Coding or development | `antigravity-cli / gemini-3.6-flash-high`; `claude-cli / sonnet`; `codex-cli / gpt-5.6-luna-medium`; `claude-cli / haiku` |
+| Coding or development | `antigravity-cli / gemini-3.6-flash-high`; `antigravity-cli / gpt-oss-120b-medium`; `claude-cli / sonnet`; `codex-cli / gpt-5.6-luna-medium`; `claude-cli / haiku` |
 | Review | `antigravity-cli / claude-sonnet-4-6`; `claude-cli / opus`; `codex-cli / gpt-5.6-terra-high` |
 | Planning | `claude-cli / opus`; `codex-cli / gpt-5.6-sol-high`; `antigravity-cli / claude-sonnet-4-6` |
 
@@ -62,7 +62,7 @@ local CLI before launch.
 
 | Task type | Priority order (CLI / model) |
 | --- | --- |
-| Coding or development | `antigravity-cli / gemini-3.6-flash-high` → `claude-cli / sonnet` → `codex-cli / gpt-5.6-luna-medium` → `claude-cli / haiku` |
+| Coding or development | `antigravity-cli / gemini-3.6-flash-high` → `antigravity-cli / gpt-oss-120b-medium` → `claude-cli / sonnet` → `codex-cli / gpt-5.6-luna-medium` → `claude-cli / haiku` |
 | Review | `antigravity-cli / claude-sonnet-4-6` → `claude-cli / opus` → `codex-cli / gpt-5.6-terra-high` |
 | Planning | `claude-cli / opus` → `codex-cli / gpt-5.6-sol-high` → `antigravity-cli / claude-sonnet-4-6` |
 

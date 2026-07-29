@@ -76,7 +76,7 @@ Dispatch: `issue-123-attempt-1`
 Mode: `assign`
 CLI/model: `antigravity-cli` / `gemini-3.6-flash-high`
 Task type: `coding`
-Fallback chain: `antigravity-cli / gemini-3.6-flash-high` -> `claude-cli / sonnet` -> `codex-cli / gpt-5.6-luna-medium` -> `claude-cli / haiku`
+Fallback chain: `antigravity-cli / gemini-3.6-flash-high` -> `antigravity-cli / gpt-oss-120b-medium` -> `claude-cli / sonnet` -> `codex-cli / gpt-5.6-luna-medium` -> `claude-cli / haiku`
 Worktree: `<absolute path>`
 Owns: `<exclusive paths>`
 Depends on: `<issue numbers or none>`
