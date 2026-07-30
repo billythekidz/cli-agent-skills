@@ -85,7 +85,15 @@ Dispatch: `task-TASK-001-attempt-1`
 ## Ownership
 - CLI / model tier: `<route>`
 - Fallback cursor: `1` for a new task; reset to `1` after the prior task is done
-- Worktree / branch: `<absolute path>` / `<branch>`
+- Availability probe: `pending` | `passed READY` | `failed` | `timed out`
+- Probe evidence: `<command, duration, parsed response/log tail>`
+- Workspace mode: `current` | `dedicated-worktree`
+- Worktree / branch: `<current workspace or dedicated path>` / `<branch>`
+- Cleanup: `not-applicable` | `pending` | `complete` | `cleanup-blocked`
+- Main-repo evidence: `<control-plane record and persisted artifact paths>`
+- Progress hash scope: `<owned paths and task artifacts>`
+- Progress hash snapshot: `<hash and timestamp>`
+- Timeout streak: `0` | `1` | `2+`
 - May change: `<exclusive paths>`
 - Must not change: `<excluded paths and external state>`
 
@@ -118,14 +126,27 @@ Use the same field structure for a bug record as the GitHub bug template, with
 ## Parallel And Sequential Work
 
 1. The supervisor writes task files and the initial index before dispatching.
-2. Give each parallel writer a unique worktree and one task file. Do not let
+2. Give each parallel writer a unique dedicated worktree and one task file. Do not let
    them edit `INDEX.md` or another worker's task/handoff file.
 3. The supervisor verifies each handoff, appends an event to `INDEX.md`, and
    changes the relevant task row only after evidence exists.
 4. Dispatch a dependent task only after its required handoff file is present
    and its output is merged or otherwise available in the dependent worktree.
 5. Let the integration owner update the final task state and parent acceptance
-   checks after the full verification succeeds.
+   checks after the full verification succeeds. Use the current workspace for
+   this sequential owner unless isolation is required.
+6. After each dedicated-worktree task is verified, stop its process, confirm its
+   commit/handoff/evidence/log summary/docs are persisted into the main
+   workspace/main repository or local control-plane records, then remove it
+   with `git worktree remove`, run `git worktree prune`, and record the cleanup
+   result and destination paths. A cleanup failure blocks closure; do not delete
+   the directory recursively.
+7. For a timed-out task, compare the progress hash across timeout checks before
+   stopping the CLI. If the hash still changes, keep the same route running. If
+   it stays unchanged across consecutive checks, stop the CLI, run the short
+   probe for the same route, and only then retry smaller or fall back.
+   Use `scripts/task_progress_hash.py --root <workspace> --path <owned-path>`
+   with the same selected paths for every comparison.
 
 An offline example maps the online webhook case as follows:
 

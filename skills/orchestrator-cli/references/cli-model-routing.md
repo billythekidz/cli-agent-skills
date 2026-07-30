@@ -9,6 +9,11 @@ codex exec --help
 agy models
 ```
 
+Before dispatching a real task prompt, run the short `READY` availability probe
+from [references/availability-probe.md](availability-probe.md). A model/CLI is
+eligible for the task only after that probe passes; a general `--help` or model
+listing check alone is not sufficient.
+
 ## CLI Selection
 
 | CLI skill | Prefer for | Avoid as the sole owner of |
@@ -75,10 +80,12 @@ prefer the stronger reasoning route even when no code will be changed.
 
 Before dispatch, run the provider's availability check (`agy models`,
 `claude --help`/configured model aliases, and `codex exec --help` or the local
-profile list). If a route cannot start, the model has no remaining quota, or it
-returns a classified capacity/rate-limit/provider/worker failure, record the
-attempted CLI/model, native-session state, exact error, and reason for fallback
-in the task record, then try the next entry. Do not skip entries silently,
+profile list), then run the short `READY` probe for the selected route. If the
+route cannot start, the probe fails or times out, the model has no remaining
+quota, or it returns a classified capacity/rate-limit/provider/worker failure,
+record the attempted CLI/model, probe command/result, native-session state,
+exact error, and reason for fallback in the task record, then try the next
+entry. Do not skip entries silently,
 retry an active process in a second CLI, or use a provider's "latest"
 conversation selector. A fallback is a new attempt with a new dispatch ID; it
 must carry a factual handoff of the previous attempt's evidence.
@@ -99,8 +106,9 @@ final selected route in the handoff.
 
 ## Prompt And Model Match
 
-- Coding/development routes receive one issue, one worktree, exact paths, and a
-  verification command.
+- Coding/development routes receive one issue, a selected workspace mode,
+  exact paths, and a verification command. Use the current workspace for a
+  simple sequential task unless isolation is required.
 - Review routes receive the changed files, branch/commit, acceptance checks, and
   an approve/request-changes verdict.
 - Planning routes receive uncertainty, constraints, alternatives, and a request

@@ -30,18 +30,27 @@ required input. Do not run a `handoff` in a worktree another writer owns.
 Before any write worker starts, verify all of the following:
 
 1. The repository, parent record, and child record are exact and authorized.
-2. The child has an objective, inputs, exclusive allowed paths, excluded paths,
-   verification, CLI, and model tier.
+2. The child has an objective, inputs, allowed paths, excluded paths,
+   verification, CLI, model tier, and an explicit workspace mode. Use
+   `current` for one sequential writer; use `dedicated-worktree` for parallel
+   or isolation-required work.
 3. Every named dependency is complete or its output is explicitly available.
 4. The dependency graph has no cycle. Break ties by the order recorded in the
    parent plan, then by issue number, so re-planning is deterministic.
-5. The worktree and branch are unique, and no active marker already claims the
-   same issue or file scope.
+5. For `dedicated-worktree`, the worktree and branch are unique. For
+   `current`, confirm no other active writer claims the same workspace or file
+   scope. In both cases, reject an already-active dispatch ID.
 6. The result location, timeout policy, and supervisor callback target are
    known before launch.
 7. The native-session action and process state are explicit: `new`, a live
    transport for an active task, or an exact recorded provider-native ID for a
    stopped task that genuinely needs a follow-up.
+8. The selected route has passed the short `READY` availability probe from
+   [availability-probe.md](availability-probe.md) within the probe budget.
+   Do not send the real task prompt before this gate passes.
+9. A progress-hash scope is defined before launch. Hash only the task's owned
+   paths, task output paths, and explicit handoff/evidence files; do not hash
+   the whole repository when unrelated changes could create false progress.
 
 Write a dispatch record before launching a child. It is the durable equivalent
 of a CAO terminal record: use an issue comment in GitHub mode, or the task file
@@ -56,7 +65,16 @@ Task type: `coding` | `review` | `plan`
 CLI/model: `<one permitted CLI/model pair from cli-model-routing.md>`
 Fallback chain: `<exact chain for the task type>`
 Fallback cursor: `1` for a new task; advance only within this task's attempts
-Worktree: `<absolute path>`
+Availability probe: `passed READY` | `failed` | `timed out`
+Probe evidence: `<command, duration, parsed response/log tail>`
+Workspace mode: `current` | `dedicated-worktree`
+Worktree: `<absolute current workspace or dedicated path>`
+Branch: `<current branch or dedicated branch>`
+Cleanup: `not-applicable` | `pending` | `complete` | `cleanup-blocked`
+Main-repo evidence: `<control-plane record and persisted artifact paths>`
+Progress hash scope: `<owned paths and task artifacts>`
+Progress hash snapshot: `<hash and timestamp>`
+Timeout streak: `0` | `1` | `2+`
 Owns: `src/webhooks/*`
 Depends on: `#121`, `#122`
 Result location: `<temporary supervisor-owned path>`
@@ -148,10 +166,22 @@ host dependencies manually: `brew install tmux` on macOS, or
 `py -m pip install pywinpty` from Windows PowerShell. The supervisor never
 auto-installs either dependency.
 
+## Workspace Selection
+
+Use `workspace=current` for a simple or sequential task with one writer. Do not
+create a worktree solely because the task is delegated to a CLI. Record the
+current absolute workspace and branch, and verify that no other active writer
+owns it.
+
+Use `workspace=dedicated-worktree` for parallel writers, overlapping/uncertain
+file scopes, explicit isolation, or a separate integration owner that must not
+touch a dirty current workspace. Record its absolute path and branch before
+launch.
+
 ## Parallel Fan-Out
 
 Run a batch only when all child issues are ready and every writer has a unique
-worktree and non-overlapping `Owns` paths. Start the batch, retain each process
+dedicated worktree and non-overlapping `Owns` paths. Start the batch, retain each process
 handle and raw output, then write one handoff record per child after review.
 Each worker has its own provider-native session envelope; never select a
 continuation through a provider's "latest" option in a concurrent batch.
@@ -174,7 +204,7 @@ command and result, evidence, blockers, and next owner.
 | Failure | Required response |
 | --- | --- |
 | `dispatch-failed` | Record the launch error. Do not claim the worker began. |
-| `worker-error` | Record exit/error evidence and preserve the worktree for inspection when useful. |
+| `worker-error` | Record exit/error evidence and preserve the worktree for inspection when useful; clean it after the disposition is recorded. |
 | `timeout` | Record the timeout and process state. Do not assume the worker made no changes. |
 | `startup-blocked-by-integrations` | After 300 seconds of `Loading`/`connecting`, preserve log tails, stop the route, run `fresh-start-without-integrations.md`, and use a new dispatch only if the no-integration probe succeeds. |
 | `no-handoff` | Record that the process ended without the required payload; inspect output before retrying. |
@@ -189,12 +219,83 @@ timeout, or environmental repair. Do not launch a second process for an active
 dispatch unless the user explicitly instructs a takeover and the original
 worker is stopped or isolated.
 
+## Timeout Progress Hash
+
+Treat a task timeout as an observation point, not an automatic stop signal.
+Compute a progress hash over the task's owned paths and explicit task artifacts.
+For a dedicated worktree, this usually means the owned files plus handoff/docs
+produced by that task. For `workspace=current`, hash only the owned paths and
+task artifact paths, never the whole repository, so unrelated edits do not look
+like task progress.
+
+The scope is task-owned, not provider-owned: use the same owned/artifact paths
+for Claude, Codex, and Antigravity within one attempt. Exclude provider-private
+state such as `.claude`, `.codex`, `.gemini`, raw session logs, and process
+metadata, because those may change without task progress. If a retry reduces or
+otherwise changes the task scope, create a new attempt and progress-hash
+baseline; do not compare it with the prior scope's hash.
+
+Use the bundled read-only helper to produce a deterministic JSON snapshot:
+
+```powershell
+python <orchestrator-cli-skill-dir>/scripts/task_progress_hash.py --root <workspace-path> --path <owned-path> --path <task-artifact-path>
+```
+
+Record the returned `sha256`, timestamp, selected paths, and file/missing-path
+lists in the dispatch record. Reuse exactly the same `--root` and `--path`
+scope for the next timeout comparison.
+
+Recommended timeout handling:
+
+1. On the first timeout, record the process state, current progress hash, and
+   timestamp. If there is no previous hash for this attempt, keep the CLI
+   running and schedule another timeout check.
+2. On the next timeout, recompute the progress hash for the same scope.
+3. If the hash changed, record `Timeout action: keep-running`, reset the
+   unchanged streak, and continue waiting.
+4. If the hash is unchanged across consecutive timeout checks, stop the CLI,
+   record `Timeout action: stop-and-probe`, run the short `READY` availability
+   probe for the same model/CLI, and only then decide whether to retry the same
+   route with a smaller task.
+5. Fall back to another model/CLI only when the probe or provider error shows
+   the current route is actually unavailable (for example quota, auth, startup,
+   or classified provider failure). Mere slowness with changing hashes is not a
+   fallback trigger.
+
 When a task reaches `verified` or `done`, close its fallback sequence and reset
 the fallback cursor to `1`. The next task must probe the first route in its own
 task-type chain, even if the previous task completed successfully on a fallback
 provider. If the first route fails again, continue through that chain and record
 the new attempts; do not reuse the previous task's selected provider as a
 sticky default.
+
+## Mandatory Dedicated-Worktree Cleanup
+
+After a dedicated-worktree task has a verified handoff:
+
+1. Stop and verify the CLI process, supervisor route, and any child processes.
+2. Confirm the task commit/handoff and inspect `git status --short` in the
+   dedicated path. Do not discard uncommitted changes silently.
+3. Persist the commit reference, handoff, evidence/log summary, and required
+   docs into the main workspace/main repository or active GitHub control plane.
+   Record the destination paths and verify they exist; the worktree must not be
+   the only copy.
+4. If the path is clean and the disposition is recorded, run from the main
+   repository:
+
+   ```powershell
+   git worktree remove <dedicated-path>
+   git worktree prune
+   ```
+
+5. Remove the dedicated branch only after it is merged or its disposition is
+   recorded. Record removed path, branch disposition, cleanup timestamp,
+   persisted artifact paths, and result in the task journal.
+
+If a process is still active, required artifacts are not persisted, the path is
+dirty without a recorded disposition, or `git worktree remove` fails, set
+`Cleanup: cleanup-blocked`, preserve the worktree, and do not mark the task
+fully closed. Never replace worktree removal with recursive filesystem deletion.
 
 For an active task with a retained route, use that route instead: Claude
 receives a JSONL user message on its original stdin; Codex app-server records

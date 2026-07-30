@@ -77,7 +77,16 @@ Mode: `assign`
 CLI/model: `antigravity-cli` / `gemini-3.6-flash-high`
 Task type: `coding`
 Fallback chain: `antigravity-cli / gemini-3.6-flash-high` -> `antigravity-cli / gpt-oss-120b-medium` -> `claude-cli / sonnet` -> `codex-cli / gpt-5.6-luna-medium` -> `claude-cli / haiku`
-Worktree: `<absolute path>`
+Availability probe: `passed READY` | `failed` | `timed out`
+Probe evidence: `<command, duration, parsed response/log tail>`
+Workspace mode: `current` | `dedicated-worktree`
+Worktree: `<current workspace or dedicated path>`
+Branch: `<current branch or dedicated branch>`
+Cleanup: `not-applicable` | `pending` | `complete` | `cleanup-blocked`
+Main-repo evidence: `<issue comment and persisted artifact paths>`
+Progress hash scope: `<owned paths and task artifacts>`
+Progress hash snapshot: `<hash and timestamp>`
+Timeout streak: `0` | `1` | `2+`
 Owns: `<exclusive paths>`
 Depends on: `<issue numbers or none>`
 State: `dispatched`

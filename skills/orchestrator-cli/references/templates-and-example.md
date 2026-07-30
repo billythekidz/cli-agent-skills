@@ -48,7 +48,14 @@ Control plane: `github` | `local-markdown`
 - Task type: `coding` | `review` | `plan`
 - Fallback chain: <exact chain from cli-model-routing.md>
 - Fallback cursor: `1` for a new task; advance only within this task
+- Availability probe: `pending` | `passed READY` | `failed` | `timed out`
+- Probe evidence: <command, duration, parsed response/log tail>
+- Workspace mode: `current` | `dedicated-worktree`
 - CLI / model: <one permitted pair for this task type>
+- Progress hash scope: <owned paths and task artifacts>
+- Progress hash snapshot: <hash and timestamp>
+- Timeout streak: `0` | `1` | `2+`
+- Exclude from hash: provider-private session/config/log paths
 - Mode: `assign` | `handoff`
 - Dispatch ID: `issue-<number>-attempt-<n>`
 - Native session: `new` | `resume <provider>/<exact ID>`
@@ -58,7 +65,9 @@ Control plane: `github` | `local-markdown`
 - Headless live transport: `stdin JSONL` | `app-server stdio` | `unavailable`
 - Live transport: `stdin JSONL` | `app-server stdio` | `tmux PTY` | `Windows pywinpty PTY` | `original interactive PTY` | `unavailable`
 - Current turn: `<turn ID>` | `awaiting result` | `queued` | `idle` | `unavailable`
-- Worktree / branch: <absolute path and branch>
+- Worktree / branch: <current workspace or dedicated path and branch>
+- Cleanup: `not-applicable` | `pending` | `complete` | `cleanup-blocked`
+- Main-repo evidence: <control-plane record and persisted artifact paths>
 - May change: <exclusive paths>
 - Must not change: <excluded paths and control-plane state>
 
@@ -144,8 +153,18 @@ remain the detailed event history.
 Task record: #<number> <URL> | `.orchestrator/tasks/TASK-<number>.md`
 Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
-Workspace: <absolute dedicated worktree>
+Workspace mode: current | dedicated-worktree
+Workspace: <absolute current workspace or dedicated worktree>
+Branch: <current branch or dedicated branch>
+Cleanup: not-applicable | pending | complete | cleanup-blocked
+Main-repo evidence: <control-plane record and persisted artifact paths>
 Native session: new | resume <provider>/<exact ID>; do not use a latest-session flag
+Availability probe: passed READY | failed | timed out; do not send the real task prompt before passed READY
+Probe evidence: <command, duration, parsed response/log tail>
+Progress hash scope: <owned paths and task artifacts>
+Progress hash snapshot: <hash and timestamp>
+Timeout streak: 0 | 1 | 2+
+Exclude from hash: provider-private session/config/log paths
 Process state: active | stopped | unavailable
 Execution mode: headless-one-shot | headless-live | interactive-live | unavailable
 Headless transport: stdout/stderr pipes | one-shot | unavailable
@@ -243,7 +262,7 @@ issues:
 | `#122` Define regression test | Only `tests/webhook-retry.*` | `assign`: coding chain, first `antigravity-cli` with `gemini-3.6-flash-high` | None |
 | `#123` Document metric and alert expectation | Only `docs/observability/*` | `assign`: review chain, first `antigravity-cli` with `claude-sonnet-4-6` | None |
 | `#124` Implement idempotency guard | Only `src/webhooks/*`; consume `#121` and merged `#122` | `handoff`: coding chain, first `antigravity-cli` with `gemini-3.6-flash-high` | `#121`, `#122` |
-| `#125` Integrate and verify | Integration worktree; no parallel writers | `handoff`: review chain, first `antigravity-cli` with `claude-sonnet-4-6` | `#123`, `#124` |
+| `#125` Integrate and verify | Current workspace; sequential, no parallel writers | `handoff`: review chain, first `antigravity-cli` with `claude-sonnet-4-6` | `#123`, `#124` |
 
 1. Inspect existing issues and labels. Post the parent plan and dispatch ledger
    with the five linked tasks, their file boundaries, and attempt IDs.
@@ -253,8 +272,10 @@ issues:
    `#122` available before dispatching `#124`.
 4. Dispatch `#124` with the exact reproduction evidence from `#121` and the
    newly available test. It owns only the implementation path.
-5. After `#124` passes its check, dispatch `#125` sequentially. The integrator
-   runs the full verification, resolves conflicts, and posts the parent summary.
+5. After `#124` passes its check, dispatch `#125` sequentially in the current
+   workspace. The integrator runs the full verification, resolves conflicts,
+   and posts the parent summary. Remove only the dedicated worktrees used by
+   the parallel batch after their handoffs and commits are verified.
 6. Close only the children with recorded acceptance evidence, then close `#120`.
 
 If any parallel worker exits without its dispatch ID and required handoff

@@ -21,9 +21,19 @@ do not start `cao-server`, call CAO, or use CAO handoff tools.
   assign, or close GitHub issues only when the user authorizes that workflow.
 - Keep GitHub writes scoped to the named repository and issue numbers. Keep
   local writes scoped to the active repository's `.orchestrator/` directory.
-- Give every writing worker a unique worktree, branch, and file ownership
-  boundary. Run work in parallel only when both dependencies and write scopes
-  are independent.
+- Use the current workspace by default for a simple or sequential task with one
+  writer. Create a dedicated worktree and branch only when writers run in
+  parallel, write scopes can conflict, the task explicitly needs isolation, or
+  the integration gate requires it. Run work in parallel only when both
+  dependencies and write scopes are independent.
+- After a dedicated-worktree task reaches verified/done, stop its CLI process,
+  persist its commit, handoff, evidence, log summary, and required docs into
+  the main workspace/main repository or active GitHub control plane, verify the
+  destination, then remove the worktree and prune its branch/metadata. Never
+  leave completed CLI worktrees behind. If cleanup is unsafe because a process
+  is active, artifacts are not persisted, or uncommitted changes lack a
+  recorded disposition, keep it and mark the task blocked instead of deleting
+  user work.
 - Treat direct CLI permission-bypass defaults as local execution policy, not
   authorization to make arbitrary GitHub writes. Use them only in trusted,
   externally sandboxed environments.
@@ -41,7 +51,7 @@ without starting `cao-server` or relying on CAO terminal IDs.
 
 | CAO primitive | Direct CLI equivalent |
 | --- | --- |
-| `assign` | Launch an independent child task asynchronously in its own worktree. Record a unique dispatch ID before launch and require a structured handoff result. |
+| `assign` | Launch an independent child task asynchronously in the current workspace or, when isolation is required, its own worktree. Record the workspace decision before launch and require a structured handoff result. |
 | `handoff` | Run a blocking gate and wait for its structured result before unlocking a dependent task. |
 | `send_message` | The supervisor writes the reviewed child result to an exact GitHub issue comment or local handoff file, then links it to the parent record. |
 
@@ -53,6 +63,39 @@ CAO's workflow service currently reserves rather than implements its own
 `parallel` mode. Implement parallelism explicitly with a dependency graph,
 separate worktrees, durable task records, and a single integration gate. See
 [references/dispatch-protocol.md](references/dispatch-protocol.md).
+
+## Workspace And Cleanup Policy
+
+Choose `workspace=current` for a simple, sequential, one-writer task. Reuse the
+current branch/workspace when no other worker is active and the task's allowed
+paths do not overlap another active writer. This avoids the cost of creating
+and indexing another Git worktree.
+
+Choose `workspace=dedicated-worktree` when two or more writers run in parallel,
+when file ownership overlaps or is uncertain, when a worker must be isolated
+from the current dirty workspace, or when the user explicitly requests
+isolation. Every dedicated worktree gets an explicit path, branch, owner, and
+cleanup record.
+
+Cleanup is mandatory for a completed dedicated worktree:
+
+1. Wait for the CLI process and supervisor route to stop; never remove an
+   active process's workspace.
+2. Verify the handoff, changed files, commit/branch, tests, and blocker state.
+3. Persist the commit reference, handoff, evidence/log summary, and required
+   documentation into the main workspace/main repository or active GitHub
+   control plane. Do not leave the only copy inside the worktree.
+4. Confirm the destination paths exist and `git status --short` is empty, or
+   record the exact disposition of every remaining change before cleanup.
+5. Run `git worktree remove <dedicated-path>` and then `git worktree prune` from
+   the main repository. Remove the task branch only when it is merged or its
+   disposition is explicitly recorded.
+6. Record cleanup status, removed path, branch disposition, persisted artifact
+   paths, and any failure in the task journal.
+
+Do not use recursive filesystem deletion as a substitute for `git worktree
+remove`. If cleanup fails, preserve the path and mark `cleanup-blocked`; do not
+claim the task is fully closed.
 
 ## Native Session Continuity
 
@@ -298,8 +341,10 @@ changing local task records.
 ## Orchestration Workflow
 
 1. **Preflight**: Confirm the control plane, parent record, current task state,
-   dependency inputs, and a unique worktree for every writer. Reject dependency
-   cycles, overlapping writers, and an already-active dispatch ID.
+   dependency inputs, and the workspace decision (`current` or
+   `dedicated-worktree`). Require unique worktrees only for parallel or
+   isolation-required writers. Reject dependency cycles, overlapping writers,
+   and an already-active dispatch ID.
 2. **Discover**: In GitHub mode, read issues, comments, and labels. In local
    mode, read `.orchestrator/INDEX.md`, the target task files, handoffs, and
    bugs. Reuse the active control plane's taxonomy and IDs.
@@ -312,12 +357,15 @@ changing local task records.
 5. **Route**: Classify the task as coding/development, review, or planning and
    select the ordered fallback chain from
    [references/cli-model-routing.md](references/cli-model-routing.md). Probe
-   availability before dispatch. Only models in the classified task's chain are
-   permitted; do not route to any other model or tier. If the model is out of
-   quota, rate-limited, overloaded, or the CLI cannot start/continue, record its
-   exact CLI/model, native-session state, error, and fallback reason, then create
-   a new attempt with the next route and a factual handoff; never silently
-   downgrade or double-dispatch an active task.
+   availability with the short `READY` check in
+   [references/availability-probe.md](references/availability-probe.md) before
+   dispatching the real task prompt. Only models in the classified task's chain
+   are permitted; do not route to any other model or tier. If the probe fails,
+   times out, reports quota/rate-limit/capacity/authentication failure, or the
+   CLI cannot start, record the probe evidence and move to the next route before
+   sending the real task prompt. If the real task later fails, record that task
+   failure separately and create the next attempt with a factual handoff; never
+   silently downgrade or double-dispatch an active task.
    The fallback cursor is task-scoped: after a task reaches `verified` or `done`,
    reset it to the first route for the next task. A successful fallback must
    never become a sticky provider/model default.
@@ -326,23 +374,33 @@ changing local task records.
    their structured results before the next task. Prefer a headless one-shot
    command for both modes; select headless-live only when same-process follow-up
    is required, and interactive-live only as an explicit fallback. Give every
-   worker the task record, dispatch ID, absolute worktree, allowed paths,
+   worker the task record, dispatch ID, workspace mode/path, allowed paths,
    prohibited paths, verification command, native-session action,
    execution/transport state, and required handoff fields.
    When follow-up injection may be needed, select headless-live first and launch
    through `<orchestrator-cli-skill-dir>/scripts/orchestrator_supervisor.py start`
    when a managed process is required; record the runtime log path in the
-   dispatch record. Use interactive-live/PTY only as the explicit fallback.
+   dispatch record. For a long-running real-task prompt, record a progress hash
+   over the task's owned paths and re-check it on timeout before stopping the
+   process. Use interactive-live/PTY only as the explicit fallback.
 7. **Track**: The supervisor reviews every worker result, then posts the
    handoff comment in GitHub mode or writes the matching handoff Markdown file
    in local mode. Record the native session envelope, mark blockers with
-   evidence, and state the next decision needed.
+   evidence, and state the next decision needed. A timeout is a progress check:
+   if the progress hash is still changing, keep the same CLI running; only when
+   the hash is unchanged across consecutive timeout checks may the supervisor
+   stop the CLI, run the short availability probe, and consider breaking the
+   task into a smaller retry. Fallback to another model/CLI only after probe
+   evidence or a classified quota/unavailable failure shows the current route
+   cannot continue.
 8. **Integrate**: Reserve one sequential owner for conflict resolution, final
-   verification, and the parent-record summary. Do not let multiple workers
-   edit the integration worktree.
+   verification, and the parent-record summary. Reuse the current workspace for
+   this owner unless isolation is required; do not let multiple workers edit
+   the same workspace.
 9. **Close**: Close only the exact GitHub child issue or mark only the exact
-   local task as done when its acceptance checks are recorded. Do not reconcile
-   the two control planes without explicit authorization.
+   local task as done when its acceptance checks and dedicated-worktree cleanup
+   status are recorded. Do not reconcile the two control planes without
+   explicit authorization.
 
 Read [references/dispatch-protocol.md](references/dispatch-protocol.md) before
 launching a parallel worker or retrying one. Read
@@ -361,7 +419,10 @@ Use this minimum prompt shape with every child agent:
 Task record: <GitHub URL/#number or .orchestrator/tasks/TASK-<number>.md>
 Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
-Workspace: <absolute, dedicated worktree>
+Workspace mode: current | dedicated-worktree
+Workspace: <absolute current workspace or dedicated worktree>
+Cleanup: required for dedicated-worktree; pending | complete | cleanup-blocked
+Main-repo evidence: <control-plane record and persisted artifact paths>
 Native session: new, then return provider and exact native ID
 Process state: active | stopped
 Execution mode: headless-one-shot | headless-live | interactive-live
@@ -371,6 +432,10 @@ Current turn: <turn ID, result boundary, queued prompt, or unavailable>
 Task type: coding | review | plan
 Fallback chain: <ordered CLI/model routes>
 Fallback cursor: <1-based route position for this task>
+Availability probe: <pending | passed READY | failed with evidence>
+Probe budget: <short wall-clock limit, recommended 30s>
+Progress hash: <owned-path hash snapshot and timestamp>
+Timeout action: <keep-running | stop-and-probe | fallback-after-quota>
 Selected CLI/model: <route used for this attempt>
 Previous fallback attempts: <none or recorded attempt summaries>
 Objective: <one observable outcome>
@@ -428,6 +493,15 @@ indefinitely or to silently re-enable a failing integration.
   smallest next action. The routing fallback chain is an explicit exception to
   the normal no-silent-retry rule: use it only after recording the failed
   attempt's CLI/model, native-session state, exact error, and reason.
+- A dedicated worktree is not complete until its CLI process is stopped, its
+  commit/handoff/evidence/log summary/docs are persisted to the main workspace,
+  main repository, or active GitHub control plane, and cleanup status is
+  recorded. A simple/sequential task using the current workspace has no
+  worktree to remove.
+- A timeout alone is not proof of a stuck CLI. Compare progress hashes over the
+  task's owned paths between timeout checks. Keep the CLI running while the hash
+  changes; only stop it after unchanged consecutive timeout checks or an
+  explicit provider failure such as quota exhaustion.
 - Distinguish `dispatch-failed`, `worker-error`, `timeout`, and `no-handoff`.
   Preserve previous evidence; create a new attempt ID only after recording why
   a retry is justified.
