@@ -86,9 +86,13 @@ Dispatch: `task-TASK-001-attempt-1`
 - CLI / model tier: `<route>`
 - Fallback cursor: `1` for a new task; reset to `1` after the prior task is done
 - Context budget: `standard` | `gpt-oss-131k`
-- Input cap: `80k tokens` | `not-applicable`
-- Reserved buffer: `at least 40k tokens` | `not-applicable`
+- Agent-controlled cap: `60k tokens` | `not-applicable`
+- Reserved buffer: `at least 60k tokens plus 11k slack` | `not-applicable`
+- Evidence controls: `not-applicable` | `<bounded query/excerpt plan>`
+- Token telemetry: `<provider-reported count>` | `unavailable`
 - Slice: `<n/m>` | `not-applicable`
+- Parent phase/task: `<parent record>` | `not-applicable`
+- GPT-OSS micro-slice: `not-applicable` | `<parent dispatch ID>/gpt-oss-s<n>: one bounded outcome`
 - Availability probe: `pending` | `passed READY` | `failed` | `timed out`
 - Probe evidence: `<command, duration, parsed response/log tail>`
 - Workspace mode: `current` | `dedicated-worktree` (explicit user approval only)

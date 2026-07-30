@@ -118,10 +118,23 @@ final selected route in the handoff.
 ### GPT-OSS Context Budget
 
 For `antigravity-cli / gpt-oss-120b-medium`, treat its 131k context window as a
-hard total budget. Submit at most 80k tokens of task input, reserve at least
-40k tokens for system instructions, tool results, and model output, and leave
-the remaining 11k tokens as safety slack. Do not inject full repository dumps,
-unbounded conversation history, or raw logs into its task prompt.
+hard total budget. Limit agent-controlled content to 60k tokens: the task
+prompt, task record, handoff, selected source snippets, graph JSONL, and
+evidence excerpts all count toward it. Reserve at least 60k tokens for the
+CLI's system prompt, loaded skills, MCP metadata, tool results, and model
+output, and leave the remaining 11k tokens as safety slack. Do not inject full
+repository dumps, unbounded conversation history, or raw logs into its task
+prompt.
+
+Treat JSONL graph and evidence maps as query-only input. Never read a complete
+large JSONL file (over 256 KiB) or any `*_MAP.jsonl`/`*_GRAPH.jsonl` directly.
+In particular, `METHOD_ACCOUNTING_MAP.jsonl` and `CALL_EDGE_ACCOUNTING_MAP.jsonl`
+must be queried by a concrete identifier or term through
+`scripts/evidence_excerpt.py`, with one excerpt limited to 48,000 emitted
+bytes and 100 records per slice. A task record plus prior handoff must fit
+within 12k tokens; the selected evidence/graph excerpt budget is 24k tokens;
+the remaining 24k tokens are for targeted source snippets and tool output.
+These are conservative allocation limits, not provider-reported telemetry.
 
 If the selected task cannot fit that input cap, split it into sequential,
 independently verifiable slices on the same GPT-OSS route. Each slice receives
@@ -130,3 +143,28 @@ verification command, and required return shape. Persist the full evidence in
 the main repository or active control plane, but pass only the relevant
 excerpts to the next slice. Context slicing is not a fallback condition and
 does not authorize another model.
+
+If a GPT-OSS attempt has no JSON result or native session ID, record token
+telemetry as `unavailable` and classify it only as `context-pressure-suspected`
+when its guarded input budget was not proven. Run the minimal `READY` probe,
+then retry one smaller guarded slice on the same route if the probe passes. Do
+not assert that the 131k limit was exceeded without provider evidence; use the
+existing fallback chain only after a classified quota, unavailable, or provider
+failure.
+
+### GPT-OSS Micro-Slice Exception
+
+When this route is selected, the orchestrator may split an assigned phase or
+child task into smaller internal micro-slices even if the original plan did not
+split it that far. This exception exists only to keep GPT-OSS within its context
+budget; it does not create a new external issue, change the parent task type,
+or alter file ownership, acceptance checks, fallback cursor, or the allowed
+model chain.
+
+Record each micro-slice as `<parent dispatch ID>/gpt-oss-s<n>` in the parent
+dispatch ledger or handoff. Run them sequentially on the same GPT-OSS route.
+Each has exactly one bounded outcome: one targeted investigation, one selected
+evidence query, one non-overlapping implementation step, or one verification
+step. Give it only its exact paths, minimal prior-slice handoff, evidence query,
+and verification. The parent can move to review/done only after all its
+micro-slices satisfy the original acceptance checks.

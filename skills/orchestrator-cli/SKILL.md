@@ -110,7 +110,6 @@ Immediately after sparse checkout and before launching the CLI, run
 `python <orchestrator-cli-skill-dir>/scripts/worktree_size.py --path <path>
 --max-bytes 500000000`. Record its JSON result. If the command reports
 `allocated_bytes` over 500 MB, do not dispatch the worker; remove that newly created, untouched
-over 500 MB, do not dispatch the worker; remove that newly created, untouched
 worktree with `git worktree remove <path>`, run `git worktree prune`, and use a
 sequential current-workspace handoff instead.
 
@@ -399,9 +398,16 @@ changing local task records.
    [references/availability-probe.md](references/availability-probe.md) before
    dispatching the real task prompt. If the selected route is
    `antigravity-cli / gpt-oss-120b-medium`, enforce its 131k context budget:
-   submit at most 80k input tokens, reserve at least 40k tokens for system,
-   tool, and output context, and split any larger task into sequential slices
-   before dispatch. Only models in the classified task's chain
+   limit agent-controlled content to 60k tokens, reserve at least 60k tokens
+   for system prompt, skills, MCP metadata, tool output, and model output, and
+   retain 11k tokens of slack. Use the bounded-evidence rules in
+   [references/dispatch-protocol.md](references/dispatch-protocol.md) and split
+   any larger task into sequential slices before dispatch. GPT-OSS may create
+   internal micro-slices that are narrower than an assigned phase or child task;
+   keep their ledger and handoffs under that parent, run them sequentially on
+   the same route, and do not alter the parent acceptance, owner, or fallback
+   cursor. Only models in the
+   classified task's chain
    are permitted; do not route to any other model or tier. If the probe fails,
    times out, reports quota/rate-limit/capacity/authentication failure, or the
    CLI cannot start, record the probe evidence and move to the next route before
@@ -484,9 +490,13 @@ Task type: coding | review | plan
 Fallback chain: <ordered CLI/model routes>
 Fallback cursor: <1-based route position for this task>
 Context budget: standard | gpt-oss-131k
-Input cap: <80k tokens or not-applicable>
-Reserved buffer: <at least 40k tokens or not-applicable>
+Agent-controlled cap: <60k tokens or not-applicable>
+Reserved buffer: <at least 60k tokens plus 11k slack or not-applicable>
+Evidence controls: <not-applicable | bounded query/excerpt plan>
+Token telemetry: <provider-reported count | unavailable>
 Slice: <n/m or not-applicable>
+Parent phase/task: <parent record or not-applicable>
+GPT-OSS micro-slice: <not-applicable | gpt-oss-s<n>: one bounded outcome>
 Availability probe: <pending | passed READY | failed with evidence>
 Probe budget: <short wall-clock limit, recommended 30s>
 Progress hash: <owned-path hash snapshot and timestamp>

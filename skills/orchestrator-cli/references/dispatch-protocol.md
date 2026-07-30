@@ -69,9 +69,13 @@ CLI/model: `<one permitted CLI/model pair from cli-model-routing.md>`
 Fallback chain: `<exact chain for the task type>`
 Fallback cursor: `1` for a new task; advance only within this task's attempts
 Context budget: `standard` | `gpt-oss-131k`
-Input cap: `80k tokens` | `not-applicable`
-Reserved buffer: `at least 40k tokens` | `not-applicable`
+Agent-controlled cap: `60k tokens` | `not-applicable`
+Reserved buffer: `at least 60k tokens plus 11k slack` | `not-applicable`
+Evidence controls: `not-applicable` | `<bounded query/excerpt plan>`
+Token telemetry: `<provider-reported count>` | `unavailable`
 Slice: `<n/m>` | `not-applicable`
+Parent phase/task: `<parent record>` | `not-applicable`
+GPT-OSS micro-slice: `not-applicable` | `<parent dispatch ID>/gpt-oss-s<n>: one bounded outcome`
 Availability probe: `passed READY` | `failed` | `timed out`
 Probe evidence: `<command, duration, parsed response/log tail>`
 Workspace mode: `current` | `dedicated-worktree`
@@ -115,10 +119,30 @@ accepting another prompt.
 ## GPT-OSS Task Slicing
 
 Apply this section only to `antigravity-cli / gpt-oss-120b-medium`. Its 131k
-context window is a hard total budget: cap submitted input at 80k tokens,
-reserve at least 40k tokens for system/tool/output context, and retain 11k
-tokens of slack. Estimate conservatively; when uncertain, split before sending
-the real task prompt.
+context window is a hard total budget. Limit all agent-controlled content to
+60k tokens: prompt, task record, handoff, source snippets, graph JSONL, and
+evidence excerpts. Reserve at least 60k tokens for the CLI system prompt,
+loaded skills, MCP metadata, tool results, and output, then retain 11k tokens
+of slack. Estimate conservatively; when uncertain, split before sending the
+real task prompt.
+
+The task record plus prior handoff is capped at 12k tokens; selected graph and
+evidence excerpts total at most 24k tokens; targeted source snippets and tool
+output use the remaining 24k tokens. Never read a complete JSONL file over
+256 KiB or any `*_MAP.jsonl`/`*_GRAPH.jsonl` directly. This includes
+`METHOD_ACCOUNTING_MAP.jsonl` and `CALL_EDGE_ACCOUNTING_MAP.jsonl`. Query one
+map at a time with a concrete identifier or term:
+
+```text
+python <orchestrator-cli-skill-dir>/scripts/evidence_excerpt.py \
+  --path <map.jsonl> --contains <identifier-or-term> \
+  --max-output-bytes 48000 --max-records 100
+```
+
+Record the command, terms, emitted-byte count, and whether it truncated. Do
+not use `cat`, `Get-Content`, or an unbounded file-read tool against these
+maps. The excerpt command constrains emitted content, not the provider's hidden
+context; token telemetry remains `unavailable` unless the provider reports it.
 
 Run one slice at a time. A slice must have a narrow observable outcome, exact
 owned/read paths, one verification command, and a concise handoff containing
@@ -131,6 +155,27 @@ If a slice would still exceed the cap, split again in this order: inventory or
 diagnosis, non-overlapping implementation groups, then verification and
 synthesis. Keep the selected GPT-OSS route unless classified quota,
 unavailability, or provider failure requires the existing fallback chain.
+If an attempt returns no JSON result or native session ID, do not claim a 131k
+overflow. Mark `context-pressure-suspected` only when the guard cannot be
+proven, run `READY`, and retry one smaller guarded slice on the same route when
+the probe passes.
+
+### Micro-Slicing An Assigned Phase Or Task
+
+GPT-OSS may subdivide an assigned phase or child task into internal
+micro-slices when its bounded-input plan requires it. Do not wait for the parent
+plan to be rewritten and do not create a new external issue merely for these
+slices. Instead, append records named `<parent dispatch ID>/gpt-oss-s<n>` to
+the existing parent dispatch ledger or handoff.
+
+Run the micro-slices sequentially on the same GPT-OSS route. Each must have one
+bounded outcome and one verification: targeted investigation, selected evidence
+query, non-overlapping implementation step, or verification/synthesis. It gets
+only exact paths, the smallest necessary prior handoff, and its evidence query.
+It must not expand the parent `Owns` paths, alter the parent task type or
+acceptance checks, advance the fallback cursor, or allow a different model.
+The parent remains active until its original acceptance checks pass after the
+final micro-slice.
 
 ## Headless-First Dispatch
 

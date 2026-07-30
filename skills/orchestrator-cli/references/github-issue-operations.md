@@ -78,9 +78,13 @@ CLI/model: `antigravity-cli` / `gemini-3.6-flash-high`
 Task type: `coding`
 Fallback chain: `antigravity-cli / gemini-3.6-flash-high` -> `antigravity-cli / gpt-oss-120b-medium` -> `claude-cli / sonnet` -> `codex-cli / gpt-5.6-luna-medium` -> `claude-cli / haiku`
 Context budget: `standard` | `gpt-oss-131k`
-Input cap: `80k tokens` | `not-applicable`
-Reserved buffer: `at least 40k tokens` | `not-applicable`
+Agent-controlled cap: `60k tokens` | `not-applicable`
+Reserved buffer: `at least 60k tokens plus 11k slack` | `not-applicable`
+Evidence controls: `not-applicable` | `<bounded query/excerpt plan>`
+Token telemetry: `<provider-reported count>` | `unavailable`
 Slice: `<n/m>` | `not-applicable`
+Parent phase/task: `<parent record>` | `not-applicable`
+GPT-OSS micro-slice: `not-applicable` | `<parent dispatch ID>/gpt-oss-s<n>: one bounded outcome`
 Availability probe: `passed READY` | `failed` | `timed out`
 Probe evidence: `<command, duration, parsed response/log tail>`
 Workspace mode: `current` | `dedicated-worktree`

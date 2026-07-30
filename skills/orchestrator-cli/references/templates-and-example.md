@@ -49,9 +49,13 @@ Control plane: `github` | `local-markdown`
 - Fallback chain: <exact chain from cli-model-routing.md>
 - Fallback cursor: `1` for a new task; advance only within this task
 - Context budget: `standard` | `gpt-oss-131k`
-- Input cap: `80k tokens` | `not-applicable`
-- Reserved buffer: `at least 40k tokens` | `not-applicable`
+- Agent-controlled cap: `60k tokens` | `not-applicable`
+- Reserved buffer: `at least 60k tokens plus 11k slack` | `not-applicable`
+- Evidence controls: `not-applicable` | <bounded query/excerpt plan>
+- Token telemetry: <provider-reported count> | `unavailable`
 - Slice: `<n/m>` | `not-applicable`
+- Parent phase/task: <parent record> | `not-applicable`
+- GPT-OSS micro-slice: `not-applicable` | <parent dispatch ID>/gpt-oss-s<n>: one bounded outcome
 - Availability probe: `pending` | `passed READY` | `failed` | `timed out`
 - Probe evidence: <command, duration, parsed response/log tail>
 - Workspace mode: `current` | `dedicated-worktree` (explicit user approval only)
@@ -178,9 +182,13 @@ Cleanup: not-applicable | pending | complete | cleanup-blocked
 Main-repo evidence: <control-plane record and persisted artifact paths>
 Native session: new | resume <provider>/<exact ID>; do not use a latest-session flag
 Context budget: standard | gpt-oss-131k
-Input cap: 80k tokens | not-applicable
-Reserved buffer: at least 40k tokens | not-applicable
+Agent-controlled cap: 60k tokens | not-applicable
+Reserved buffer: at least 60k tokens plus 11k slack | not-applicable
+Evidence controls: not-applicable | <bounded query/excerpt plan>
+Token telemetry: <provider-reported count> | unavailable
 Slice: <n/m> | not-applicable
+Parent phase/task: <parent record> | not-applicable
+GPT-OSS micro-slice: not-applicable | <parent dispatch ID>/gpt-oss-s<n>: one bounded outcome
 Availability probe: passed READY | failed | timed out; do not send the real task prompt before passed READY
 Probe evidence: <command, duration, parsed response/log tail>
 Progress hash scope: <owned paths and task artifacts>
