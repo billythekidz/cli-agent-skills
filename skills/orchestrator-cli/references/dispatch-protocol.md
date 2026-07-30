@@ -32,14 +32,17 @@ Before any write worker starts, verify all of the following:
 1. The repository, parent record, and child record are exact and authorized.
 2. The child has an objective, inputs, allowed paths, excluded paths,
    verification, CLI, model tier, and an explicit workspace mode. Use
-   `current` for one sequential writer; use `dedicated-worktree` for parallel
-   or isolation-required work.
+   `current` by default. `dedicated-worktree` requires explicit user approval
+   for the named task; parallel or isolation-required writers are otherwise
+   converted into sequential handoffs.
 3. Every named dependency is complete or its output is explicitly available.
 4. The dependency graph has no cycle. Break ties by the order recorded in the
    parent plan, then by issue number, so re-planning is deterministic.
-5. For `dedicated-worktree`, the worktree and branch are unique. For
-   `current`, confirm no other active writer claims the same workspace or file
-   scope. In both cases, reject an already-active dispatch ID.
+5. For `dedicated-worktree`, record the user's authorization plus existing
+   worktree and free-space preflight evidence, then ensure the worktree and
+   branch are unique. For `current`, confirm no other active writer claims the
+   same workspace or file scope. In both cases, reject an already-active
+   dispatch ID.
 6. The result location, timeout policy, and supervisor callback target are
    known before launch.
 7. The native-session action and process state are explicit: `new`, a live
@@ -65,10 +68,21 @@ Task type: `coding` | `review` | `plan`
 CLI/model: `<one permitted CLI/model pair from cli-model-routing.md>`
 Fallback chain: `<exact chain for the task type>`
 Fallback cursor: `1` for a new task; advance only within this task's attempts
+Context budget: `standard` | `gpt-oss-131k`
+Input cap: `80k tokens` | `not-applicable`
+Reserved buffer: `at least 40k tokens` | `not-applicable`
+Slice: `<n/m>` | `not-applicable`
 Availability probe: `passed READY` | `failed` | `timed out`
 Probe evidence: `<command, duration, parsed response/log tail>`
 Workspace mode: `current` | `dedicated-worktree`
 Worktree: `<absolute current workspace or dedicated path>`
+Worktree authorization: `prohibited-by-default` | `user-approved <source>`
+Worktree disk preflight: `not-applicable` | `<existing worktrees and free-space evidence>`
+Worktree checkout: `not-applicable` | `<required sparse read/owned paths>`
+Shared cache policy: `not-applicable` | `<external safe cache names and paths>`
+Worktree size cap: `not-applicable` | `500000000 bytes`
+Worktree size measurement: `not-applicable` | `<JSON result from worktree_size.py>`
+Write access: `single current-workspace integrator` | `read-only parallel worker`
 Branch: `<current branch or dedicated branch>`
 Cleanup: `not-applicable` | `pending` | `complete` | `cleanup-blocked`
 Main-repo evidence: `<control-plane record and persisted artifact paths>`
@@ -97,6 +111,26 @@ the exact provider-native ID from the worker result, or `unavailable` when the
 CLI did not report a stable ID. While the worker remains active, update the
 same record with its execution mode, transport, and current-turn state before
 accepting another prompt.
+
+## GPT-OSS Task Slicing
+
+Apply this section only to `antigravity-cli / gpt-oss-120b-medium`. Its 131k
+context window is a hard total budget: cap submitted input at 80k tokens,
+reserve at least 40k tokens for system/tool/output context, and retain 11k
+tokens of slack. Estimate conservatively; when uncertain, split before sending
+the real task prompt.
+
+Run one slice at a time. A slice must have a narrow observable outcome, exact
+owned/read paths, one verification command, and a concise handoff containing
+summary, changed paths, key findings, verification result, and the next
+slice's minimum inputs. Persist complete logs and evidence in the main
+repository or control plane, then send only relevant excerpts to the next
+slice. Splitting a sequential task does not require a dedicated worktree.
+
+If a slice would still exceed the cap, split again in this order: inventory or
+diagnosis, non-overlapping implementation groups, then verification and
+synthesis. Keep the selected GPT-OSS route unless classified quota,
+unavailability, or provider failure requires the existing fallback chain.
 
 ## Headless-First Dispatch
 
@@ -168,23 +202,80 @@ auto-installs either dependency.
 
 ## Workspace Selection
 
-Use `workspace=current` for a simple or sequential task with one writer. Do not
-create a worktree solely because the task is delegated to a CLI. Record the
-current absolute workspace and branch, and verify that no other active writer
-owns it.
+Use `workspace=current` for all writer tasks unless the user explicitly
+authorizes a dedicated worktree for the named task. Do not create a worktree
+solely because the task is delegated to a CLI, has a dirty workspace, has
+uncertain ownership, or could run in parallel. Record the current absolute
+workspace and branch, verify that no other active writer owns it, and serialize
+writer tasks with handoffs when needed.
 
-Use `workspace=dedicated-worktree` for parallel writers, overlapping/uncertain
-file scopes, explicit isolation, or a separate integration owner that must not
-touch a dirty current workspace. Record its absolute path and branch before
-launch.
+An approved `workspace=dedicated-worktree` requires a named authorization,
+unique path/branch, the existing worktree list, and free-space evidence before
+launch. Create a sparse worktree that checks out only the task's required
+paths; full-source worktrees are forbidden. If sparse paths cannot support the
+task, block the worktree request and use a sequential current-workspace
+handoff. Reject the dispatch if the preflight cannot show capacity for the
+selected checkout and generated dependencies. Keep concurrent work read-only
+when no worktree exception is authorized.
+
+Use this mandatory native Git sequence for an approved sparse worktree; it is
+cross-platform because it uses Git rather than filesystem links:
+
+```text
+git config extensions.worktreeConfig true
+git worktree add --no-checkout -b <branch> <path> <start-point>
+git -C <path> sparse-checkout init --cone
+git -C <path> sparse-checkout set <read-and-owned-path>...
+git -C <path> sparse-checkout list
+git -C <path> checkout
+python <orchestrator-cli-skill-dir>/scripts/worktree_size.py --path <path> --max-bytes 500000000
+```
+
+Record the `sparse-checkout list` output and reject the dispatch if it does not
+match the task's declared read/owned paths. `git worktree add` without
+`--no-checkout` and every full-source worktree are forbidden. Share only
+external, concurrency-safe caches such as a package manager content store or
+Unity Accelerator. Do not share a repo-local `node_modules`, Unity `Library`,
+build output, or tool cache with another writer: each can be mutated by
+installs, imports, builds, or a branch change. Unity editor tasks stay
+sequential in the current workspace unless the user explicitly accepts a
+separate `Library` for the isolated task.
+
+The size command is a hard gate: a sparse worktree must have no more than
+500 MB (500,000,000 allocated bytes, excluding external symlink targets)
+before any CLI task starts. If it exceeds the limit, do not dispatch. Because no worker
+has started, remove the newly created untouched worktree with `git worktree
+remove <path>`, run `git worktree prune`, record the measurement, and execute
+the task sequentially in the current workspace instead.
+
+## Parallel Without Worktrees
+
+Use this mode to avoid duplicate dependency, build, and generated-artifact
+trees. Select one `single current-workspace integrator` as the only process
+allowed to change repository files. Dispatch any number of `read-only parallel
+worker` tasks against the same recorded commit/working-tree baseline. Their
+scope can include code inspection, dependency tracing, static analysis, review,
+test design, or a non-mutating command whose outputs are directed outside the
+repository.
+
+Read-only parallel workers must not apply patches, run formatters, update
+lockfiles, install dependencies into the repository, or create generated
+artifacts there. They return findings, exact evidence, and optionally a
+proposed unified diff in their handoff. After their handoffs are reviewed, the
+integrator applies only selected changes sequentially, runs the verification,
+and records the resulting commit/evidence. If a task needs to alter source or
+repo-local state, it is an integrator handoff, not a concurrent writer.
 
 ## Parallel Fan-Out
 
-Run a batch only when all child issues are ready and every writer has a unique
-dedicated worktree and non-overlapping `Owns` paths. Start the batch, retain each process
-handle and raw output, then write one handoff record per child after review.
-Each worker has its own provider-native session envelope; never select a
-continuation through a provider's "latest" option in a concurrent batch.
+Run a parallel batch only for read-only children by default. Writer batches
+require the user's explicit dedicated-worktree authorization for every named
+writer plus passing disk preflight and non-overlapping `Owns` paths. Otherwise,
+dispatch the writers sequentially as `handoff` tasks in the current workspace.
+Retain each process handle and raw output, then write one handoff record per
+child after review. Each worker has its own provider-native session envelope;
+never select a continuation through a provider's "latest" option in a
+concurrent batch.
 
 Do not use an unbounded fan-out. Limit the batch to the number of independent
 tasks that can be reviewed and integrated without losing track of their output.

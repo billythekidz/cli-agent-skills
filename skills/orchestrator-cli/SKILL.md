@@ -21,11 +21,19 @@ do not start `cao-server`, call CAO, or use CAO handoff tools.
   assign, or close GitHub issues only when the user authorizes that workflow.
 - Keep GitHub writes scoped to the named repository and issue numbers. Keep
   local writes scoped to the active repository's `.orchestrator/` directory.
-- Use the current workspace by default for a simple or sequential task with one
-  writer. Create a dedicated worktree and branch only when writers run in
-  parallel, write scopes can conflict, the task explicitly needs isolation, or
-  the integration gate requires it. Run work in parallel only when both
-  dependencies and write scopes are independent.
+- Use `workspace=current` by default and prohibit creating a dedicated
+  worktree unless the user explicitly authorizes one for the named task.
+  Parallel writers, uncertain ownership, a dirty workspace, or an integration
+  gate are not implicit exceptions: serialize writers through `handoff`
+  records instead. Run parallel work only when every concurrent task is
+  read-only or the user has approved the required dedicated worktrees.
+- For parallel work without worktrees, designate exactly one sequential
+  integrator as the source-tree writer. Other concurrent workers are
+  read-only: they inspect, analyze, review, or run only non-mutating checks and
+  return findings or a proposed patch in their handoff. They must not apply a
+  patch, run formatters, update lockfiles, or write generated artifacts inside
+  the repository. The integrator applies selected proposals and verifies them
+  one at a time in the current workspace.
 - After a dedicated-worktree task reaches verified/done, stop its CLI process,
   persist its commit, handoff, evidence, log summary, and required docs into
   the main workspace/main repository or active GitHub control plane, verify the
@@ -71,11 +79,40 @@ current branch/workspace when no other worker is active and the task's allowed
 paths do not overlap another active writer. This avoids the cost of creating
 and indexing another Git worktree.
 
-Choose `workspace=dedicated-worktree` when two or more writers run in parallel,
-when file ownership overlaps or is uncertain, when a worker must be isolated
-from the current dirty workspace, or when the user explicitly requests
-isolation. Every dedicated worktree gets an explicit path, branch, owner, and
-cleanup record.
+`workspace=dedicated-worktree` is prohibited by default. It may be used only
+after the user explicitly authorizes a dedicated worktree for the named task.
+Parallel writers, uncertain ownership, and a dirty current workspace require a
+sequential handoff plan; they do not grant an exception. Before an approved
+exception, inspect existing worktrees and available disk space, record the
+authorization and preflight result, and confirm the main workspace has enough
+capacity for the selected sparse checkout and its generated dependencies. A
+full-source worktree is never permitted. If the task cannot be bounded to
+sparse paths, block the worktree request and run it sequentially in the current
+workspace. Every approved dedicated worktree gets an explicit path, branch,
+owner, sparse path list, disk preflight, authorization reference, cache policy,
+size measurement, and cleanup record. A sparse worktree's allocated filesystem
+size must not exceed 500 MB (500,000,000 bytes), excluding external symlink
+targets.
+
+For an approved thin worktree, create it without an initial checkout, enable
+per-worktree Git configuration, configure sparse-checkout for only the task's
+read/owned paths, verify the configured sparse path list, then perform its
+first checkout. `git worktree add` without `--no-checkout` is forbidden in an
+orchestrated run. Keep dependency caches outside the repository and share only
+caches designed for concurrent reuse (such as the package manager's
+content-addressed store or Unity Accelerator). Never junction, symlink, or
+otherwise share a mutable repo-local `node_modules`, Unity `Library`, build
+output, or tool cache between concurrent writers. Unity editor tasks normally
+remain sequential in the current workspace because `Library` is a mutable
+imported-asset database.
+
+Immediately after sparse checkout and before launching the CLI, run
+`python <orchestrator-cli-skill-dir>/scripts/worktree_size.py --path <path>
+--max-bytes 500000000`. Record its JSON result. If the command reports
+`allocated_bytes` over 500 MB, do not dispatch the worker; remove that newly created, untouched
+over 500 MB, do not dispatch the worker; remove that newly created, untouched
+worktree with `git worktree remove <path>`, run `git worktree prune`, and use a
+sequential current-workspace handoff instead.
 
 Cleanup is mandatory for a completed dedicated worktree:
 
@@ -341,10 +378,11 @@ changing local task records.
 ## Orchestration Workflow
 
 1. **Preflight**: Confirm the control plane, parent record, current task state,
-   dependency inputs, and the workspace decision (`current` or
-   `dedicated-worktree`). Require unique worktrees only for parallel or
-   isolation-required writers. Reject dependency cycles, overlapping writers,
-   and an already-active dispatch ID.
+   dependency inputs, and the workspace decision. Use `current` unless the
+   user explicitly authorized a named `dedicated-worktree`; otherwise serialize
+   writers through handoffs. For an approved worktree, record free-space and
+   existing-worktree evidence before creation. Reject dependency cycles,
+   overlapping writers, and an already-active dispatch ID.
 2. **Discover**: In GitHub mode, read issues, comments, and labels. In local
    mode, read `.orchestrator/INDEX.md`, the target task files, handoffs, and
    bugs. Reuse the active control plane's taxonomy and IDs.
@@ -359,7 +397,11 @@ changing local task records.
    [references/cli-model-routing.md](references/cli-model-routing.md). Probe
    availability with the short `READY` check in
    [references/availability-probe.md](references/availability-probe.md) before
-   dispatching the real task prompt. Only models in the classified task's chain
+   dispatching the real task prompt. If the selected route is
+   `antigravity-cli / gpt-oss-120b-medium`, enforce its 131k context budget:
+   submit at most 80k input tokens, reserve at least 40k tokens for system,
+   tool, and output context, and split any larger task into sequential slices
+   before dispatch. Only models in the classified task's chain
    are permitted; do not route to any other model or tier. If the probe fails,
    times out, reports quota/rate-limit/capacity/authentication failure, or the
    CLI cannot start, record the probe evidence and move to the next route before
@@ -369,9 +411,11 @@ changing local task records.
    The fallback cursor is task-scoped: after a task reaches `verified` or `done`,
    reset it to the first route for the next task. A successful fallback must
    never become a sticky provider/model default.
-6. **Dispatch**: Mark independent tasks as `assign` and launch them in parallel
-   only after preflight passes. Mark dependency gates as `handoff`; wait for
-   their structured results before the next task. Prefer a headless one-shot
+6. **Dispatch**: Mark independent tasks as `assign` and launch writer tasks
+   sequentially in the current workspace by default. Parallelize only read-only
+   tasks, or writers with user-approved dedicated worktrees whose disk
+   preflight passed. Mark dependency gates as `handoff`; wait for their
+   structured results before the next task. Prefer a headless one-shot
    command for both modes; select headless-live only when same-process follow-up
    is required, and interactive-live only as an explicit fallback. Give every
    worker the task record, dispatch ID, workspace mode/path, allowed paths,
@@ -421,6 +465,13 @@ Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
 Workspace mode: current | dedicated-worktree
 Workspace: <absolute current workspace or dedicated worktree>
+Worktree authorization: prohibited-by-default | user-approved <source>
+Worktree disk preflight: <not-applicable | existing worktrees and free-space evidence>
+Worktree checkout: <not-applicable | required sparse paths>
+Shared cache policy: <not-applicable | external safe cache names and paths>
+Worktree size cap: <not-applicable | 500000000 bytes>
+Worktree size measurement: <not-applicable | JSON result from worktree_size.py>
+Write access: <single current-workspace integrator | read-only parallel worker>
 Cleanup: required for dedicated-worktree; pending | complete | cleanup-blocked
 Main-repo evidence: <control-plane record and persisted artifact paths>
 Native session: new, then return provider and exact native ID
@@ -432,6 +483,10 @@ Current turn: <turn ID, result boundary, queued prompt, or unavailable>
 Task type: coding | review | plan
 Fallback chain: <ordered CLI/model routes>
 Fallback cursor: <1-based route position for this task>
+Context budget: standard | gpt-oss-131k
+Input cap: <80k tokens or not-applicable>
+Reserved buffer: <at least 40k tokens or not-applicable>
+Slice: <n/m or not-applicable>
 Availability probe: <pending | passed READY | failed with evidence>
 Probe budget: <short wall-clock limit, recommended 30s>
 Progress hash: <owned-path hash snapshot and timestamp>

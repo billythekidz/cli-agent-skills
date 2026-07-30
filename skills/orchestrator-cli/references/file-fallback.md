@@ -85,10 +85,21 @@ Dispatch: `task-TASK-001-attempt-1`
 ## Ownership
 - CLI / model tier: `<route>`
 - Fallback cursor: `1` for a new task; reset to `1` after the prior task is done
+- Context budget: `standard` | `gpt-oss-131k`
+- Input cap: `80k tokens` | `not-applicable`
+- Reserved buffer: `at least 40k tokens` | `not-applicable`
+- Slice: `<n/m>` | `not-applicable`
 - Availability probe: `pending` | `passed READY` | `failed` | `timed out`
 - Probe evidence: `<command, duration, parsed response/log tail>`
-- Workspace mode: `current` | `dedicated-worktree`
-- Worktree / branch: `<current workspace or dedicated path>` / `<branch>`
+- Workspace mode: `current` | `dedicated-worktree` (explicit user approval only)
+- Worktree authorization: `prohibited-by-default` | `user-approved <source>`
+- Worktree disk preflight: `not-applicable` | `<existing worktrees and free-space evidence>`
+- Worktree checkout: `not-applicable` | `<required sparse read/owned paths>`
+- Shared cache policy: `not-applicable` | `<external safe cache names and paths>`
+- Worktree size cap: `not-applicable` | `500000000 bytes`
+- Worktree size measurement: `not-applicable` | `<JSON result from worktree_size.py>`
+- Write access: `single current-workspace integrator` | `read-only parallel worker`
+- Worktree / branch: `<current workspace or approved dedicated path>` / `<branch>`
 - Cleanup: `not-applicable` | `pending` | `complete` | `cleanup-blocked`
 - Main-repo evidence: `<control-plane record and persisted artifact paths>`
 - Progress hash scope: `<owned paths and task artifacts>`
@@ -126,8 +137,12 @@ Use the same field structure for a bug record as the GitHub bug template, with
 ## Parallel And Sequential Work
 
 1. The supervisor writes task files and the initial index before dispatching.
-2. Give each parallel writer a unique dedicated worktree and one task file. Do not let
-   them edit `INDEX.md` or another worker's task/handoff file.
+2. Run writer tasks sequentially in the current workspace. Parallel work is
+   read-only by default. A parallel writer needs explicit user approval for a
+   dedicated worktree and recorded disk preflight; do not let it edit `INDEX.md`
+   or another worker's task/handoff file.
+   Read-only parallel workers return evidence or a proposed patch; one
+   integrator applies selected changes sequentially after the handoffs.
 3. The supervisor verifies each handoff, appends an event to `INDEX.md`, and
    changes the relevant task row only after evidence exists.
 4. Dispatch a dependent task only after its required handoff file is present

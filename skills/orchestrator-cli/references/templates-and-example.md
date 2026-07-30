@@ -48,9 +48,20 @@ Control plane: `github` | `local-markdown`
 - Task type: `coding` | `review` | `plan`
 - Fallback chain: <exact chain from cli-model-routing.md>
 - Fallback cursor: `1` for a new task; advance only within this task
+- Context budget: `standard` | `gpt-oss-131k`
+- Input cap: `80k tokens` | `not-applicable`
+- Reserved buffer: `at least 40k tokens` | `not-applicable`
+- Slice: `<n/m>` | `not-applicable`
 - Availability probe: `pending` | `passed READY` | `failed` | `timed out`
 - Probe evidence: <command, duration, parsed response/log tail>
-- Workspace mode: `current` | `dedicated-worktree`
+- Workspace mode: `current` | `dedicated-worktree` (explicit user approval only)
+- Worktree authorization: `prohibited-by-default` | `user-approved <source>`
+- Worktree disk preflight: `not-applicable` | <existing worktrees and free-space evidence>
+- Worktree checkout: `not-applicable` | <required sparse read/owned paths>
+- Shared cache policy: `not-applicable` | <external safe cache names and paths>
+- Worktree size cap: `not-applicable` | `500000000 bytes`
+- Worktree size measurement: `not-applicable` | <JSON result from worktree_size.py>
+- Write access: `single current-workspace integrator` | `read-only parallel worker`
 - CLI / model: <one permitted pair for this task type>
 - Progress hash scope: <owned paths and task artifacts>
 - Progress hash snapshot: <hash and timestamp>
@@ -153,12 +164,23 @@ remain the detailed event history.
 Task record: #<number> <URL> | `.orchestrator/tasks/TASK-<number>.md`
 Dispatch ID: issue-<number>-attempt-<n> | task-TASK-<number>-attempt-<n>
 Mode: assign | handoff
-Workspace mode: current | dedicated-worktree
-Workspace: <absolute current workspace or dedicated worktree>
+Workspace mode: current | dedicated-worktree (explicit user approval only)
+Workspace: <absolute current workspace or approved dedicated worktree>
+Worktree authorization: prohibited-by-default | user-approved <source>
+Worktree disk preflight: not-applicable | <existing worktrees and free-space evidence>
+Worktree checkout: not-applicable | <required sparse read/owned paths>
+Shared cache policy: not-applicable | <external safe cache names and paths>
+Worktree size cap: not-applicable | 500000000 bytes
+Worktree size measurement: not-applicable | <JSON result from worktree_size.py>
+Write access: single current-workspace integrator | read-only parallel worker
 Branch: <current branch or dedicated branch>
 Cleanup: not-applicable | pending | complete | cleanup-blocked
 Main-repo evidence: <control-plane record and persisted artifact paths>
 Native session: new | resume <provider>/<exact ID>; do not use a latest-session flag
+Context budget: standard | gpt-oss-131k
+Input cap: 80k tokens | not-applicable
+Reserved buffer: at least 40k tokens | not-applicable
+Slice: <n/m> | not-applicable
 Availability probe: passed READY | failed | timed out; do not send the real task prompt before passed READY
 Probe evidence: <command, duration, parsed response/log tail>
 Progress hash scope: <owned paths and task artifacts>
@@ -266,16 +288,16 @@ issues:
 
 1. Inspect existing issues and labels. Post the parent plan and dispatch ledger
    with the five linked tasks, their file boundaries, and attempt IDs.
-2. Run `#121`, `#122`, and `#123` in separate worktrees at the same time. They
-   have no shared writable path. Post each dispatch marker before launch.
+2. Run `#121`, `#122`, and `#123` sequentially as handoffs in the current
+   workspace. Post each dispatch marker only after the preceding writer's
+   handoff is verified.
 3. Review the three handoffs. Merge or otherwise make the regression test from
    `#122` available before dispatching `#124`.
 4. Dispatch `#124` with the exact reproduction evidence from `#121` and the
    newly available test. It owns only the implementation path.
 5. After `#124` passes its check, dispatch `#125` sequentially in the current
    workspace. The integrator runs the full verification, resolves conflicts,
-   and posts the parent summary. Remove only the dedicated worktrees used by
-   the parallel batch after their handoffs and commits are verified.
+   and posts the parent summary. No worktree is created for this plan.
 6. Close only the children with recorded acceptance evidence, then close `#120`.
 
 If any parallel worker exits without its dispatch ID and required handoff

@@ -114,3 +114,19 @@ final selected route in the handoff.
 - Planning routes receive uncertainty, constraints, alternatives, and a request
   for explicit assumptions and evidence.
 - Do not replace any of these routes with a different model tier or provider.
+
+### GPT-OSS Context Budget
+
+For `antigravity-cli / gpt-oss-120b-medium`, treat its 131k context window as a
+hard total budget. Submit at most 80k tokens of task input, reserve at least
+40k tokens for system instructions, tool results, and model output, and leave
+the remaining 11k tokens as safety slack. Do not inject full repository dumps,
+unbounded conversation history, or raw logs into its task prompt.
+
+If the selected task cannot fit that input cap, split it into sequential,
+independently verifiable slices on the same GPT-OSS route. Each slice receives
+only its objective, exact owned/read paths, minimal prior-slice handoff,
+verification command, and required return shape. Persist the full evidence in
+the main repository or active control plane, but pass only the relevant
+excerpts to the next slice. Context slicing is not a fallback condition and
+does not authorize another model.
