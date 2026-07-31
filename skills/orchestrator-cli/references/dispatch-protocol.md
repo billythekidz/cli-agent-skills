@@ -43,6 +43,15 @@ Before any write worker starts, verify all of the following:
    branch are unique. For `current`, confirm no other active writer claims the
    same workspace or file scope. In both cases, reject an already-active
    dispatch ID.
+6. Derive each hard runtime resource before dispatch: selected CLI/model,
+   workspace/input, test harness, service/MCP capability, authenticated
+   dependency, and artifact. Record an exact non-mutating health/handshake
+   command and result for each. A configured endpoint, installed binary, or
+   listening port alone does not pass this gate.
+7. Do not dispatch until every hard resource is `ready`. A failed or timed-out
+   resource is `blocked-resource-unavailable`, not a reason to try another
+   model/CLI. Do not put an instruction to use that resource in the worker
+   prompt unless its check passed.
 6. The result location, timeout policy, and supervisor callback target are
    known before launch.
 7. The native-session action and process state are explicit: `new`, a live
@@ -50,6 +59,8 @@ Before any write worker starts, verify all of the following:
    stopped task that genuinely needs a follow-up.
 8. The selected route has passed the short `READY` availability probe from
    [availability-probe.md](availability-probe.md) within the probe budget.
+   `READY` and `READY.` are both valid normalized probe results; record the raw
+   parsed response and do not fallback on the terminal period alone.
    Do not send the real task prompt before this gate passes.
 9. A progress-hash scope is defined before launch. Hash only the task's owned
    paths, task output paths, and explicit handoff/evidence files; do not hash
@@ -76,8 +87,10 @@ Token telemetry: `<provider-reported count>` | `unavailable`
 Slice: `<n/m>` | `not-applicable`
 Parent phase/task: `<parent record>` | `not-applicable`
 GPT-OSS micro-slice: `not-applicable` | `<parent dispatch ID>/gpt-oss-s<n>: one bounded outcome`
+Resource readiness: `ready` | `blocked-resource-unavailable`
+Required resources: `<name, scope, capability, check command, timeout, JSON result>`
 Availability probe: `passed READY` | `failed` | `timed out`
-Probe evidence: `<command, duration, parsed response/log tail>`
+Probe evidence: `<command, duration, raw parsed response, normalized result, log tail>`
 Workspace mode: `current` | `dedicated-worktree`
 Worktree: `<absolute current workspace or dedicated path>`
 Worktree authorization: `prohibited-by-default` | `user-approved <source>`
@@ -115,6 +128,31 @@ the exact provider-native ID from the worker result, or `unavailable` when the
 CLI did not report a stable ID. While the worker remains active, update the
 same record with its execution mode, transport, and current-turn state before
 accepting another prompt.
+
+## Resource Readiness Gate
+
+Build a hard-resource list from the task's actual acceptance checks before
+launch. It includes the selected CLI/model, workspace and inputs, runtime or
+editor, test harness, authenticated services, MCP endpoints and required
+capabilities, plus required artifacts. Check every item with a bounded,
+non-mutating command:
+
+```text
+python <orchestrator-cli-skill-dir>/scripts/resource_readiness.py \
+  --name <stable-resource-name> --timeout-seconds 15 -- <health-or-handshake-command>
+```
+
+Persist the JSON result in the parent dispatch record. All hard resources must
+be `ready` before the real task prompt is sent. If any check fails or times
+out, set `blocked-resource-unavailable`, name the unavailable capability, and
+stop. Do not tell a worker to use it, silently substitute another model/CLI, or
+claim an E2E check ran.
+
+For Unity E2E, the readiness command must prove the expected project/editor
+connection and a minimal non-mutating Unity MCP operation required by the test.
+MCP configuration or a listening port is insufficient. A dead Unity MCP blocks
+the task until an authorized repair or revised acceptance scope removes that
+dependency.
 
 ## GPT-OSS Task Slicing
 

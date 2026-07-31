@@ -85,8 +85,10 @@ Token telemetry: `<provider-reported count>` | `unavailable`
 Slice: `<n/m>` | `not-applicable`
 Parent phase/task: `<parent record>` | `not-applicable`
 GPT-OSS micro-slice: `not-applicable` | `<parent dispatch ID>/gpt-oss-s<n>: one bounded outcome`
+Resource readiness: `ready` | `blocked-resource-unavailable`
+Required resources: `<name, scope, capability, check command, timeout, JSON result>`
 Availability probe: `passed READY` | `failed` | `timed out`
-Probe evidence: `<command, duration, parsed response/log tail>`
+Probe evidence: `<command, duration, raw parsed response, normalized result, log tail>`
 Workspace mode: `current` | `dedicated-worktree`
 Worktree: `<current workspace or dedicated path>`
 Branch: `<current branch or dedicated branch>`

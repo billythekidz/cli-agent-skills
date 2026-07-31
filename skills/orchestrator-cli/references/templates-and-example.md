@@ -56,8 +56,10 @@ Control plane: `github` | `local-markdown`
 - Slice: `<n/m>` | `not-applicable`
 - Parent phase/task: <parent record> | `not-applicable`
 - GPT-OSS micro-slice: `not-applicable` | <parent dispatch ID>/gpt-oss-s<n>: one bounded outcome
+- Resource readiness: `ready` | `blocked-resource-unavailable`
+- Required resources: <name, scope, capability, check command, timeout, JSON result>
 - Availability probe: `pending` | `passed READY` | `failed` | `timed out`
-- Probe evidence: <command, duration, parsed response/log tail>
+- Probe evidence: <command, duration, raw parsed response, normalized result, log tail>
 - Workspace mode: `current` | `dedicated-worktree` (explicit user approval only)
 - Worktree authorization: `prohibited-by-default` | `user-approved <source>`
 - Worktree disk preflight: `not-applicable` | <existing worktrees and free-space evidence>
@@ -189,8 +191,10 @@ Token telemetry: <provider-reported count> | unavailable
 Slice: <n/m> | not-applicable
 Parent phase/task: <parent record> | not-applicable
 GPT-OSS micro-slice: not-applicable | <parent dispatch ID>/gpt-oss-s<n>: one bounded outcome
+Resource readiness: ready | blocked-resource-unavailable
+Required resources: <name, scope, capability, check command, timeout, JSON result>
 Availability probe: passed READY | failed | timed out; do not send the real task prompt before passed READY
-Probe evidence: <command, duration, parsed response/log tail>
+Probe evidence: <command, duration, raw parsed response, normalized result, log tail>
 Progress hash scope: <owned paths and task artifacts>
 Progress hash snapshot: <hash and timestamp>
 Timeout streak: 0 | 1 | 2+

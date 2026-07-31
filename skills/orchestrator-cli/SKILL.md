@@ -52,6 +52,35 @@ do not start `cao-server`, call CAO, or use CAO handoff tools.
   process handle, worktree, and tmux session are related records, not native
   session IDs.
 
+## Resource Readiness Gate
+
+Before giving a real task prompt to any CLI, derive every hard resource the
+task actually requires: selected CLI/model, workspace and declared inputs,
+runtime/editor, test harness, authenticated service, MCP endpoint/capability,
+and required artifact or environment. A configuration entry, installed binary,
+or open port is not proof that a resource can perform the requested operation.
+
+For each hard resource, record its name, exact scope, required capability,
+non-mutating health/handshake command, timeout, and structured result. Run the
+check through `scripts/resource_readiness.py` before dispatch. All hard
+resources must be `ready`; otherwise mark the task
+`blocked-resource-unavailable`, attach the evidence, and do not send the task
+prompt. Never ask a worker to use a resource that did not pass this gate.
+
+For example, a Unity E2E task requires more than a configured Unity MCP entry:
+verify the expected project/editor connection and a minimal non-mutating MCP
+capability needed by the test. If Unity MCP is down, do not tell Codex, Claude,
+or Antigravity to use it. Do not silently fallback to another model or CLI,
+because that cannot restore the failed resource; wait for an authorized repair,
+or receive a revised acceptance scope that no longer requires it.
+
+Use this cross-platform form; the check command itself must not print secrets:
+
+```text
+python <orchestrator-cli-skill-dir>/scripts/resource_readiness.py \
+  --name <stable-resource-name> --timeout-seconds 15 -- <health-or-handshake-command>
+```
+
 ## CAO-Derived Dispatch Model
 
 Adapt CAO's implemented `assign`, `handoff`, and `send_message` contracts
@@ -396,7 +425,13 @@ changing local task records.
    [references/cli-model-routing.md](references/cli-model-routing.md). Probe
    availability with the short `READY` check in
    [references/availability-probe.md](references/availability-probe.md) before
-   dispatching the real task prompt. If the selected route is
+   dispatching the real task prompt. Treat a final probe response of `READY`
+   or `READY.` as `passed READY`; record the raw response and normalized result
+   instead of falling back on a single terminal period. Derive and pass the resource-readiness
+   gate before the task prompt; include the selected CLI/model, workspace,
+   required runtime, test harness, service/MCP capabilities, and artifacts.
+   If a hard resource fails, record `blocked-resource-unavailable` and do not
+   dispatch or change providers merely to bypass it. If the selected route is
    `antigravity-cli / gpt-oss-120b-medium`, enforce its 131k context budget:
    limit agent-controlled content to 60k tokens, reserve at least 60k tokens
    for system prompt, skills, MCP metadata, tool output, and model output, and
@@ -497,6 +532,8 @@ Token telemetry: <provider-reported count | unavailable>
 Slice: <n/m or not-applicable>
 Parent phase/task: <parent record or not-applicable>
 GPT-OSS micro-slice: <not-applicable | gpt-oss-s<n>: one bounded outcome>
+Resource readiness: <ready | blocked-resource-unavailable>
+Required resources: <name, scope, capability, check command, timeout, result>
 Availability probe: <pending | passed READY | failed with evidence>
 Probe budget: <short wall-clock limit, recommended 30s>
 Progress hash: <owned-path hash snapshot and timestamp>

@@ -93,8 +93,10 @@ Dispatch: `task-TASK-001-attempt-1`
 - Slice: `<n/m>` | `not-applicable`
 - Parent phase/task: `<parent record>` | `not-applicable`
 - GPT-OSS micro-slice: `not-applicable` | `<parent dispatch ID>/gpt-oss-s<n>: one bounded outcome`
+- Resource readiness: `ready` | `blocked-resource-unavailable`
+- Required resources: `<name, scope, capability, check command, timeout, JSON result>`
 - Availability probe: `pending` | `passed READY` | `failed` | `timed out`
-- Probe evidence: `<command, duration, parsed response/log tail>`
+- Probe evidence: `<command, duration, raw parsed response, normalized result, log tail>`
 - Workspace mode: `current` | `dedicated-worktree` (explicit user approval only)
 - Worktree authorization: `prohibited-by-default` | `user-approved <source>`
 - Worktree disk preflight: `not-applicable` | `<existing worktrees and free-space evidence>`

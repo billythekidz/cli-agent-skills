@@ -17,7 +17,21 @@ The probe passes only when all of the following are true:
 - the selected CLI starts within the short probe budget (recommended: 30s);
 - the process exits successfully and returns machine-readable output when the
   route supports it; and
-- the final response is exactly `READY` after normal output-envelope parsing.
+- the final response, after normal output-envelope parsing and whitespace
+  trimming, is exactly `READY` or exactly `READY.`. A single terminal ASCII
+  period is accepted as harmless provider punctuation; no other punctuation,
+  explanation, code fence, or extra text is accepted.
+
+Probe normalization is therefore:
+
+```text
+raw response -> output-envelope text -> trim whitespace ->
+pass only if the result is `READY` or `READY.`
+```
+
+Record both the raw parsed response and the normalized status. Do not advance
+the fallback cursor merely because a provider returned `READY.` instead of
+`READY`.
 
 The probe is not task work and is not acceptance evidence. After a pass, start
 the real task using the normal dispatch command and record a new native session
@@ -67,7 +81,8 @@ the CLI cannot launch, record the probe command, exit state, parsed output/log
 tail, and failure classification, then probe the next permitted route. Do not
 send the large task prompt to a route whose probe has failed.
 
-When a probe passes, dispatch the real task on that selected route. If the real
+When a probe passes, dispatch the real task on that selected route. `READY.` is
+a passing probe, not a fallback trigger. If the real
 task later fails, record the task failure separately and continue with the next
 fallback route; a passing probe does not guarantee task completion.
 
